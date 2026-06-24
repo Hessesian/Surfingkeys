@@ -51,6 +51,7 @@ const runtime = (function() {
             caseSensitive: false,
             clickablePat: /(https?:\/\/|thunder:\/\/|magnet:)\S+/ig,
             clickableSelector: "",
+            detectClickableByCursor: false,
             editableSelector: "div.CodeMirror-scroll,div.ace_content",
             cursorAtEndOfInput: true,
             defaultLLMProvider: "ollama",
