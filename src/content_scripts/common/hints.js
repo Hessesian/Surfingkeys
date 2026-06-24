@@ -14,13 +14,15 @@ import {
     getColor,
     getCssSelectorsOfEditable,
     getRealRect,
+    getStructuralClickableSelector,
     getTextNodePos,
     getVisibleElements,
+    getVisibleElementsBySelector,
     getZIndex,
     htmlEncode,
     initSKFunctionListener,
     isEditable,
-    isElementClickable,
+    isElementClickableByCursor,
     isElementDrawn,
     openOmnibar,
     refreshHints,
@@ -791,19 +793,25 @@ div.hint-scrollable {
         }
         let elements;
         if (cssSelector === "") {
-            elements = getVisibleElements(function(e, v) {
-                if (isElementClickable(e)) {
-                    v.push(e);
-                }
-            });
+            elements = getVisibleElementsBySelector(getStructuralClickableSelector());
+            // Fall back to the expensive full-DOM cursor heuristic when the
+            // fast pass found nothing (page built entirely from non-semantic
+            // markup), or when the user has explicitly asked for it every time.
+            if (elements.length === 0 || runtime.conf.detectClickableByCursor) {
+                const structural = new Set(elements);
+                const byCursor = getVisibleElements(function(e, v) {
+                    if (!structural.has(e) && isElementClickableByCursor(e)) {
+                        v.push(e);
+                    }
+                });
+                elements = elements.concat(byCursor);
+            }
             elements = filterOverlapElements(elements);
         } else if (Array.isArray(cssSelector)) {
             elements = filterInvisibleElements(cssSelector);
         } else {
-            elements = getVisibleElements(function (e, v) {
-                if (e.matches(cssSelector) && !e.disabled && !e.readOnly) {
-                    v.push(e);
-                }
+            elements = getVisibleElementsBySelector(cssSelector, function(e) {
+                return !e.disabled && !e.readOnly;
             });
             elements = filterInvisibleElements(elements);
             elements = filterOverlapElements(elements);
