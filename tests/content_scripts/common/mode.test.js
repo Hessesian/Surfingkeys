@@ -105,4 +105,32 @@ describe('Mode.getScrollableElements fast path', () => {
             Object.defineProperty(Document.prototype, 'scrollingElement', realScrollingElementDesc);
         }
     });
+
+    test('getAllScrollableElements finds every scrollable container, not just ones near viewport center', () => {
+        const panelA = makeScrollableDiv('panel-a', 1000);
+        const panelB = makeScrollableDiv('panel-b', 1000);
+        document.body.appendChild(panelA);
+        document.body.appendChild(panelB);
+
+        const result = Mode.getAllScrollableElements();
+
+        expect(result).toEqual(expect.arrayContaining([panelA, panelB]));
+        expect(result.length).toBe(2);
+    });
+
+    test('getScrollableElements (fast path) misses a disjoint sibling panel that getAllScrollableElements finds', () => {
+        const panelA = makeScrollableDiv('panel-a-fast', 1000);
+        const panelB = makeScrollableDiv('panel-b-fast', 1000);
+        document.body.appendChild(panelA);
+        document.body.appendChild(panelB);
+
+        document.elementFromPoint = () => panelA;
+
+        const fastResult = Mode.getScrollableElements();
+        const allResult = Mode.getAllScrollableElements();
+
+        expect(fastResult).toEqual([panelA]);
+        expect(allResult).toEqual(expect.arrayContaining([panelA, panelB]));
+        expect(allResult.length).toBe(2);
+    });
 });

@@ -220,6 +220,15 @@ function getScrollableElementsByFullScan() {
     return nodes;
 }
 
+function unshiftScrollingElementIfNeeded(nodes) {
+    // document.scrollingElement will be null when document.body.tagName === "FRAMESET", for example http://www.knoppix.org/
+    if (document.scrollingElement && (document.scrollingElement.scrollHeight > window.innerHeight
+        || document.scrollingElement.scrollWidth > window.innerWidth)) {
+        nodes.unshift(document.scrollingElement);
+    }
+    return nodes;
+}
+
 Mode.getScrollableElements = function () {
     var nodes = [];
     var node = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
@@ -237,12 +246,18 @@ Mode.getScrollableElements = function () {
         nodes = getScrollableElementsByFullScan();
     }
 
-    // document.scrollingElement will be null when document.body.tagName === "FRAMESET", for example http://www.knoppix.org/
-    if (document.scrollingElement && (document.scrollingElement.scrollHeight > window.innerHeight
-        || document.scrollingElement.scrollWidth > window.innerWidth)) {
-        nodes.unshift(document.scrollingElement);
-    }
-    return nodes;
+    return unshiftScrollingElementIfNeeded(nodes);
+};
+
+/**
+ * Find every scrollable container in the document (not just ones near the
+ * viewport center), for callers that need to enumerate all scrollable
+ * regions — e.g. cycling through them. Slower than `getScrollableElements`
+ * since it always does the full-document scan; use that instead when you
+ * only need a default scroll target.
+ */
+Mode.getAllScrollableElements = function () {
+    return unshiftScrollingElementIfNeeded(getScrollableElementsByFullScan());
 };
 
 Mode.init = (cb)=> {

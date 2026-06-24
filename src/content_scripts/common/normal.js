@@ -448,16 +448,20 @@ function createNormal(insert) {
         _nodesHasSKScroll.push(elm);
     }
 
+    function setScrollNodes(nodes) {
+        scrollNodes = nodes;
+        scrollNodes.forEach(function (n) {
+            n.removeEventListener('mousedown', scrollableMousedownHandler);
+            n.addEventListener('mousedown', scrollableMousedownHandler);
+            n.dataset.hint_scrollable = true;
+        });
+        scrollIndex = 0;
+    }
+
     // set scrollIndex to the highest node
     function initScrollIndex() {
         if (!scrollNodes || scrollNodes.length === 0) {
-            scrollNodes = Mode.getScrollableElements();
-            scrollNodes.forEach(function (n) {
-                n.removeEventListener('mousedown', scrollableMousedownHandler);
-                n.addEventListener('mousedown', scrollableMousedownHandler);
-                n.dataset.hint_scrollable = true;
-            });
-            scrollIndex = 0;
+            setScrollNodes(Mode.getScrollableElements());
         }
     }
 
@@ -498,7 +502,7 @@ function createNormal(insert) {
         }]);
     }
     function changeScrollTarget(silent) {
-        scrollNodes = Mode.getScrollableElements();
+        scrollNodes = Mode.getAllScrollableElements();
         if (scrollNodes.length > 0) {
             scrollIndex = (scrollIndex + 1) % scrollNodes.length;
             var sn = scrollNodes[scrollIndex];
@@ -643,8 +647,7 @@ function createNormal(insert) {
     };
 
     self.refreshScrollableElements = function () {
-        scrollNodes = null;
-        initScrollIndex();
+        setScrollNodes(Mode.getAllScrollableElements());
         return scrollNodes;
     };
 
