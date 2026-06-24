@@ -246,10 +246,36 @@ function isElementClickable(e) {
         cssSelector += ", " + runtime.conf.clickableSelector;
     }
 
-    return e.matches(cssSelector)
-        || getComputedStyle(e).cursor === "pointer"
-        || getComputedStyle(e).cursor.substr(0, 4) === "url("
+    if (e.matches(cssSelector)) {
+        return true;
+    }
+    var cursor = getComputedStyle(e).cursor;
+    return cursor === "pointer"
+        || cursor.substr(0, 4) === "url("
         || e.closest("a, *[onclick], *[contenteditable=true], *.jfk-button, *.goog-flat-menu-button") !== null;
+}
+
+/**
+ * Get the cumulative z-index of an element by walking up its ancestor chain,
+ * using `cache` to avoid recomputing the (expensive) computed style of
+ * ancestors shared between multiple elements within the same call site.
+ *
+ * @param {Element} node
+ * @param {WeakMap} cache a fresh WeakMap per hint-generation pass.
+ * @returns {number}
+ */
+function getZIndex(node, cache) {
+    if (cache.has(node)) {
+        return cache.get(node);
+    }
+    var i = parseInt(getComputedStyle(node).getPropertyValue('z-index'));
+    var z = (isNaN(i) || i < 0) ? 0 : i;
+    var parent = node.parentNode;
+    if (parent && parent !== document.body && parent !== document && parent.nodeType !== node.DOCUMENT_FRAGMENT_NODE) {
+        z += getZIndex(parent, cache);
+    }
+    cache.set(node, z);
+    return z;
 }
 
 /**
@@ -1160,6 +1186,7 @@ export {
     getTextRect,
     getVisibleElements,
     getWordUnderCursor,
+    getZIndex,
     hashString,
     htmlEncode,
     httpRequest,
