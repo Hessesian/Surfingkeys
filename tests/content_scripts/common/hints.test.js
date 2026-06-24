@@ -93,4 +93,14 @@ describe('hints click detection', () => {
         const found = await hints.create("", function() {});
         expect(found).toBe(2);
     });
+
+    test('createInputLayer finds visible text inputs via the selector fast path', () => {
+        document.body.innerHTML = '<input id="i1" type="text"><input id="i2" type="text"><input id="i3" type="checkbox">';
+
+        hints.createInputLayer();
+
+        const host = document.querySelector('.surfingkeys_hints_host');
+        const maskedIds = Array.from(host.shadowRoot.querySelectorAll('mask')).map((m) => m.link.id);
+        expect(maskedIds.sort()).toEqual(['i1', 'i2']);
+    });
 });

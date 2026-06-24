@@ -930,19 +930,15 @@ div.hint-scrollable {
         placeHintsHost(hintsHost);
         const cssSelector = getCssSelectorsOfEditable();
 
-        var elements = getVisibleElements(function(e, v) {
-            if (e.matches(cssSelector) && !e.disabled && !e.readOnly
-                && (e.type === "text" || e.type === "email" || e.type === "search" || e.type === "password")) {
-                v.push(e);
-            }
+        var elements = getVisibleElementsBySelector(cssSelector, function(e) {
+            return !e.disabled && !e.readOnly
+                && (e.type === "text" || e.type === "email" || e.type === "search" || e.type === "password");
         });
 
         if (elements.length === 0 && document.querySelector(cssSelector) !== null) {
             document.querySelector(cssSelector).scrollIntoView();
-            elements = getVisibleElements(function(e, v) {
-                if (e.matches(cssSelector) && !e.disabled && !e.readOnly) {
-                    v.push(e);
-                }
+            elements = getVisibleElementsBySelector(cssSelector, function(e) {
+                return !e.disabled && !e.readOnly;
             });
         }
 
