@@ -240,19 +240,42 @@ function isElementVisible(elm) {
     return elm.offsetHeight > 0 && elm.offsetWidth > 0;
 }
 
-function isElementClickable(e) {
+/**
+ * The CSS selector for elements that are clickable purely by markup
+ * (semantic tags, ARIA roles, or `runtime.conf.clickableSelector`).
+ * This selector is safe to pass to `querySelectorAll` directly, unlike
+ * the cursor-based heuristic in `isElementClickableByCursor`.
+ *
+ * @returns {string}
+ */
+function getStructuralClickableSelector() {
     var cssSelector = "a, button, select, input, textarea, summary, *[onclick], *[contenteditable=true], *.jfk-button, *.goog-flat-menu-button, *[role=button], *[role=link], *[role=menuitem], *[role=option], *[role=switch], *[role=tab], *[role=checkbox], *[role=combobox], *[role=menuitemcheckbox], *[role=menuitemradio]";
     if (runtime.conf.clickableSelector.length) {
         cssSelector += ", " + runtime.conf.clickableSelector;
     }
+    return cssSelector;
+}
 
-    if (e.matches(cssSelector)) {
-        return true;
-    }
+/**
+ * Detect elements that are clickable only by virtue of computed style
+ * (`cursor: pointer` or a custom cursor image) or by being a descendant
+ * of a clickable container. This cannot be expressed as a CSS selector,
+ * so checking it for every element on a page requires visiting every
+ * element — callers should only do that when
+ * `runtime.conf.detectClickableByCursor` is enabled.
+ *
+ * @param {Element} e
+ * @returns {boolean}
+ */
+function isElementClickableByCursor(e) {
     var cursor = getComputedStyle(e).cursor;
     return cursor === "pointer"
         || cursor.substr(0, 4) === "url("
         || e.closest("a, *[onclick], *[contenteditable=true], *.jfk-button, *.goog-flat-menu-button") !== null;
+}
+
+function isElementClickable(e) {
+    return e.matches(getStructuralClickableSelector()) || isElementClickableByCursor(e);
 }
 
 /**
@@ -1184,6 +1207,7 @@ export {
     getTextNodePos,
     getTextNodes,
     getTextRect,
+    getStructuralClickableSelector,
     getVisibleElements,
     getWordUnderCursor,
     getZIndex,
@@ -1194,6 +1218,7 @@ export {
     initSKFunctionListener,
     isEditable,
     isElementClickable,
+    isElementClickableByCursor,
     isElementDrawn,
     isElementPartiallyInViewport,
     isInUIFrame,

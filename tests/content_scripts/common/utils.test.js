@@ -1,5 +1,5 @@
 describe('utils performance', () => {
-    let isElementClickable, getZIndex;
+    let isElementClickable, getZIndex, getStructuralClickableSelector, isElementClickableByCursor;
 
     beforeAll(() => {
         global.chrome = {
@@ -18,6 +18,8 @@ describe('utils performance', () => {
         const utils = require('src/content_scripts/common/utils.js');
         isElementClickable = utils.isElementClickable;
         getZIndex = utils.getZIndex;
+        getStructuralClickableSelector = utils.getStructuralClickableSelector;
+        isElementClickableByCursor = utils.isElementClickableByCursor;
     });
 
     test('isElementClickable reads computed style only once per element', () => {
@@ -55,5 +57,23 @@ describe('utils performance', () => {
         // cached while resolving childA, so they must not be read again.
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy).toHaveBeenCalledWith(childB);
+    });
+
+    test('getStructuralClickableSelector returns a selector that matches anchors', () => {
+        document.body.innerHTML = '<a id="link" href="#"></a><div id="plain"></div>';
+        const selector = getStructuralClickableSelector();
+        expect(document.getElementById('link').matches(selector)).toBe(true);
+        expect(document.getElementById('plain').matches(selector)).toBe(false);
+    });
+
+    test('isElementClickableByCursor detects cursor:pointer styling on a non-semantic div', () => {
+        document.body.innerHTML = '<div id="fake-button" style="cursor: pointer;"></div><div id="plain"></div>';
+        expect(isElementClickableByCursor(document.getElementById('fake-button'))).toBe(true);
+        expect(isElementClickableByCursor(document.getElementById('plain'))).toBe(false);
+    });
+
+    test('isElementClickable still returns true via the cursor fallback (unchanged public behavior)', () => {
+        document.body.innerHTML = '<div id="fake-button" style="cursor: pointer;"></div>';
+        expect(isElementClickable(document.getElementById('fake-button'))).toBe(true);
     });
 });
