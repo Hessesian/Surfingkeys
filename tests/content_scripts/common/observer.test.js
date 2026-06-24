@@ -18,6 +18,14 @@ describe('observer modal detection', () => {
         Element.prototype.getBoundingClientRect = function() {
             return { top: 0, left: 0, width: 400, height: 400, bottom: 400, right: 400 };
         };
+
+        // initSKFunctionListener (utils.js) registers a new document-level listener
+        // on every startScrollNodeObserver call and never removes the previous one,
+        // so this suite must reuse a single instance across tests instead of
+        // re-invoking startScrollNodeObserver per test (which would accumulate
+        // listeners and break event delivery to later tests' instances).
+        normal = { addScrollableElement: jest.fn() };
+        startScrollNodeObserver(normal);
     });
 
     afterAll(() => {
@@ -26,8 +34,7 @@ describe('observer modal detection', () => {
 
     beforeEach(() => {
         document.body.innerHTML = '';
-        normal = { addScrollableElement: jest.fn() };
-        startScrollNodeObserver(normal);
+        normal.addScrollableElement = jest.fn();
         document.dispatchEvent(new CustomEvent('surfingkeys:observer', { detail: ['turnOn'] }));
     });
 
