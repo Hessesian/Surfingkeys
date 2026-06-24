@@ -206,15 +206,37 @@ Mode.hasScroll = function (el, direction, barSize) {
     return result >= barSize;
 };
 
-Mode.getScrollableElements = function () {
-    var nodes = listElements(document.body, NodeFilter.SHOW_ELEMENT, function(n) {
-        return isElementDrawn(n) && ((Mode.hasScroll(n, 'y', 16) && n.scrollHeight > 200 ) || (Mode.hasScroll(n, 'x', 16) && n.scrollWidth > 200));
-    });
+function isScrollableContainer(n) {
+    return isElementDrawn(n) && ((Mode.hasScroll(n, 'y', 16) && n.scrollHeight > 200) || (Mode.hasScroll(n, 'x', 16) && n.scrollWidth > 200));
+}
+
+function getScrollableElementsByFullScan() {
+    var nodes = listElements(document.body, NodeFilter.SHOW_ELEMENT, isScrollableContainer);
     nodes.sort(function(a, b) {
         if (b.contains(a)) return 1;
         else if (a.contains(b)) return -1;
         return b.scrollHeight * b.scrollWidth - a.scrollHeight * a.scrollWidth;
     });
+    return nodes;
+}
+
+Mode.getScrollableElements = function () {
+    var nodes = [];
+    var node = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    while (node) {
+        if (isScrollableContainer(node)) {
+            nodes.push(node);
+        }
+        if (node === document.body) {
+            break;
+        }
+        node = node.parentElement;
+    }
+
+    if (nodes.length === 0) {
+        nodes = getScrollableElementsByFullScan();
+    }
+
     // document.scrollingElement will be null when document.body.tagName === "FRAMESET", for example http://www.knoppix.org/
     if (document.scrollingElement && (document.scrollingElement.scrollHeight > window.innerHeight
         || document.scrollingElement.scrollWidth > window.innerWidth)) {
