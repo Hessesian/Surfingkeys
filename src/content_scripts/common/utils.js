@@ -491,6 +491,75 @@ function getVisibleElements(filter) {
 }
 
 /**
+ * Find every shadow root nested anywhere under `root` (recursively).
+ * Walking `root.querySelectorAll('*')` to find shadow hosts is cheap —
+ * it's a property read per element, not a forced style/layout
+ * computation — unlike the per-element `getBoundingClientRect`/
+ * `getComputedStyle` calls in `getVisibleElements`.
+ *
+ * @param {Document|ShadowRoot} root
+ * @returns {Array<ShadowRoot>}
+ */
+function getShadowRootsDeep(root) {
+    var roots = [];
+    var hosts = root.querySelectorAll('*');
+    for (var i = 0; i < hosts.length; i++) {
+        if (hosts[i].shadowRoot) {
+            roots.push(hosts[i].shadowRoot);
+            roots = roots.concat(getShadowRootsDeep(hosts[i].shadowRoot));
+        }
+    }
+    return roots;
+}
+
+/**
+ * Like `document.querySelectorAll(cssSelector)`, but also matches inside
+ * every shadow root in the document.
+ *
+ * @param {string} cssSelector
+ * @returns {Array<Element>}
+ */
+function querySelectorAllDeep(cssSelector) {
+    var result = Array.from(document.querySelectorAll(cssSelector));
+    var shadowRoots = getShadowRootsDeep(document);
+    for (var i = 0; i < shadowRoots.length; i++) {
+        result = result.concat(Array.from(shadowRoots[i].querySelectorAll(cssSelector)));
+    }
+    return result;
+}
+
+/**
+ * Like `getVisibleElements`, but starts from the (usually much smaller)
+ * set of elements matching `cssSelector` instead of scanning every
+ * element in the document. Use this whenever the desired elements can be
+ * expressed as a CSS selector — it avoids the expensive
+ * `getBoundingClientRect`/`getComputedStyle` calls for every irrelevant
+ * node on the page.
+ *
+ * @param {string} cssSelector
+ * @param {function(Element): boolean} [extraFilter] optional predicate
+ *   applied after the viewport/visibility check.
+ * @returns {Array<Element>}
+ */
+function getVisibleElementsBySelector(cssSelector, extraFilter) {
+    var candidates = querySelectorAllDeep(cssSelector);
+    var visibleElements = [];
+    for (var i = 0; i < candidates.length; i++) {
+        var e = candidates[i];
+        var rect = e.getBoundingClientRect();
+        if ((rect.top <= window.innerHeight) && (rect.bottom >= 0)
+            && (rect.left <= window.innerWidth) && (rect.right >= 0)
+            && rect.height > 0
+            && getComputedStyle(e).visibility !== 'hidden'
+            && (!extraFilter || extraFilter(e))
+        ) {
+            visibleElements.push(e);
+        }
+    }
+    return visibleElements;
+}
+
+/**
  * Get large elements that are currently visible in the viewport.
  * A large element is defined as one that takes up a significant portion of the viewport.
  *
@@ -1207,9 +1276,12 @@ export {
     getTextNodePos,
     getTextNodes,
     getTextRect,
+    getShadowRootsDeep,
     getStructuralClickableSelector,
     getVisibleElements,
+    getVisibleElementsBySelector,
     getWordUnderCursor,
+    querySelectorAllDeep,
     getZIndex,
     hashString,
     htmlEncode,
