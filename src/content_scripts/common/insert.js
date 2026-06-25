@@ -212,9 +212,7 @@ function createInsert() {
         }
         // prevent this event to be handled by Surfingkeys' other listeners
         var realTarget = getRealEdit(event);
-        if (!isEditable(realTarget)) {
-            self.exit();
-        } else if (event.sk_keyName.length) {
+        if (isEditable(realTarget) && event.sk_keyName.length) {
             Mode.handleMapKey.call(self, event, function(last) {
                 // for insert mode to insert unmapped chars with preceding chars same as some mapkeys
                 // such as, to insert `,m` in case of mapkey `,,` defined.
@@ -251,10 +249,19 @@ function createInsert() {
         event.sk_suppressed = true;
     });
     self.addEventListener('focus', function(event) {
-        var realTarget = getRealEdit(event);
-        // We get a focus event with target = window when the browser window looses focus.
-        // Ignore this event.
-        if (event.target != window && !isEditable(realTarget)) {
+        event.sk_suppressed = true;
+    });
+    self.addEventListener('mousedown', function(event) {
+        // Only a real, physical mouse click can exit Insert mode here —
+        // event.isTrusted guards against a page script dispatching a
+        // synthetic mousedown to fake the user clicking away. A focus or
+        // keydown event whose target merely *looks* non-editable is not
+        // trustworthy on its own (see the removed exit branches above):
+        // it can be triggered by the page's own re-renders, or by
+        // getRealEdit() resolving through a shadow-DOM wrapper that isn't
+        // itself editable even though a real editable element is nested
+        // inside it.
+        if (event.isTrusted && !isEditable(getRealEdit(event))) {
             self.exit();
         } else {
             event.sk_suppressed = true;
