@@ -796,8 +796,11 @@ div.hint-scrollable {
             elements = getVisibleElementsBySelector(getStructuralClickableSelector());
             // Fall back to the expensive full-DOM cursor heuristic when the
             // fast pass found nothing (page built entirely from non-semantic
-            // markup), or when the user has explicitly asked for it every time.
-            if (elements.length === 0 || runtime.conf.detectClickableByCursor) {
+            // markup), when the user has explicitly asked for it every time
+            // (runtime.conf.detectClickableByCursor), or when this specific
+            // call asked for it (behaviours.forceDetectByCursor, set by the
+            // "F" mapping for an on-demand full-coverage scan).
+            if (elements.length === 0 || runtime.conf.detectClickableByCursor || behaviours.forceDetectByCursor) {
                 const structural = new Set(elements);
                 const byCursor = getVisibleElements(function(e, v) {
                     if (!structural.has(e) && isElementClickableByCursor(e)) {

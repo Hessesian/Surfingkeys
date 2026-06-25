@@ -94,6 +94,14 @@ describe('hints click detection', () => {
         expect(found).toBe(2);
     });
 
+    test('forceDetectByCursor finds a non-semantic cursor:pointer div even though structural elements were already found', async () => {
+        document.body.innerHTML = '<a id="a1" href="#"></a><a id="a2" href="#"></a><div id="fake-button" style="cursor: pointer;"></div>';
+        runtime.conf.detectClickableByCursor = false;
+
+        const found = await hints.create("", function() {}, { forceDetectByCursor: true });
+        expect(found).toBe(3);
+    });
+
     test('createInputLayer finds visible text inputs via the selector fast path', () => {
         document.body.innerHTML = '<input id="i1" type="text"><input id="i2" type="text"><input id="i3" type="checkbox">';
 
