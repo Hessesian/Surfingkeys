@@ -87,4 +87,14 @@ describe('observer modal detection', () => {
 
         expect(normal.addScrollableElement).not.toHaveBeenCalled();
     });
+
+    test('does not call addScrollableElement for an element positioned entirely below the viewport', async () => {
+        const offscreen = makeModalDiv('below-the-fold');
+        offscreen.getBoundingClientRect = () => ({ top: 900, left: 0, width: 400, height: 350, bottom: 1250, right: 400 });
+        document.body.appendChild(offscreen);
+
+        await new Promise((r) => setTimeout(r, 250));
+
+        expect(normal.addScrollableElement).not.toHaveBeenCalled();
+    });
 });

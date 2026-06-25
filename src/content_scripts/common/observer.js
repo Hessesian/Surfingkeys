@@ -21,6 +21,7 @@ function isPossibleModalElement(e) {
         && br.width > 300 && br.height > 300
         && br.width <= window.innerWidth && br.height <= window.innerHeight
         && br.top >= 0 && br.left >= 0
+        && br.top <= window.innerHeight && br.left <= window.innerWidth
         && Mode.hasScroll(e, 'y', 16)
         && isElementPositionRelative(e);
 }
