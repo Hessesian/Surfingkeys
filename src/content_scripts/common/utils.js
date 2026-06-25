@@ -686,6 +686,38 @@ function isExplicitlyRequested(element) {
         element.matches(runtime.conf.clickableSelector);
 }
 
+function isElementAtPoint(e, x, y) {
+    var el = e.getRootNode().elementFromPoint(x, y);
+    return !el || el.shadowRoot && (el.childElementCount === 0 || el.shadowRoot.contains(e)) || el.contains(e) || e.contains(el);
+}
+
+/**
+ * Test whether `e` is occluded by something else at every one of 5 sample
+ * points (center + 4 inset corners) of its rect `be`. A single center-point
+ * test (the old behavior) misses large "overlay" elements — e.g. a
+ * full-card `<a>` whose visible content is a sibling layer drawn on top of
+ * its center — that are still the real clickable target across most of
+ * their area. Sampling the corners too means the element is only
+ * considered occluded if nothing of it is clickable anywhere.
+ *
+ * @param {Element} e
+ * @param {DOMRect} be
+ * @returns {boolean}
+ */
+function isElementOccluded(e, be) {
+    var inset = 2; // px, avoid landing exactly on a shared border with a neighboring element
+    var points = [
+        [be.left + be.width / 2, be.top + be.height / 2], // center
+        [be.left + inset, be.top + inset],                 // top-left
+        [be.right - inset, be.top + inset],                // top-right
+        [be.left + inset, be.bottom - inset],               // bottom-left
+        [be.right - inset, be.bottom - inset],              // bottom-right
+    ];
+    return !points.some(function(p) {
+        return isElementAtPoint(e, p[0], p[1]);
+    });
+}
+
 function filterOverlapElements(elements) {
     // filter out tiny elements
     elements = elements.filter(function(e) {
@@ -696,8 +728,7 @@ function filterOverlapElements(elements) {
             || e.contentEditable === "true" || isExplicitlyRequested(e)) {
             return true;
         } else {
-            var el = e.getRootNode().elementFromPoint(be.left + be.width/2, be.top + be.height/2);
-            return !el || el.shadowRoot && (el.childElementCount === 0 || el.shadowRoot.contains(e)) || el.contains(e) || e.contains(el);
+            return !isElementOccluded(e, be);
         }
     });
 

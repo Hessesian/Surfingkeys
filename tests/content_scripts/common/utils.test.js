@@ -157,3 +157,102 @@ describe('getVisibleElementsBySelector', () => {
         expect(result.map((e) => e.id)).toEqual(['enabled']);
     });
 });
+
+describe('filterOverlapElements occlusion sampling', () => {
+    let filterOverlapElements;
+    let realGetBoundingClientRect, realElementFromPoint, realGetComputedStyle;
+
+    beforeAll(() => {
+        global.chrome = {
+            runtime: { sendMessage: jest.fn(), onMessage: { addListener: jest.fn() } },
+            extension: { getURL: jest.fn() }
+        };
+        global.DOMRect = jest.fn();
+
+        filterOverlapElements = require('src/content_scripts/common/utils.js').filterOverlapElements;
+
+        realGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function() {
+            return this._rect || { top: 0, left: 0, width: 100, height: 100, bottom: 100, right: 100 };
+        };
+
+        // jsdom's getComputedStyle() leaves `opacity` as "" instead of the
+        // browser default of "1", which makes isElementDrawn() treat every
+        // element as invisible (parseFloat("") > 0.1 is false). Patch only
+        // that gap, matching the same workaround used in hints.test.js.
+        realGetComputedStyle = window.getComputedStyle;
+        window.getComputedStyle = function(elm, pseudoElt) {
+            const style = realGetComputedStyle(elm, pseudoElt);
+            if (style.opacity === "") {
+                Object.defineProperty(style, 'opacity', { value: "1", configurable: true });
+            }
+            return style;
+        };
+
+        realElementFromPoint = document.elementFromPoint;
+    });
+
+    afterAll(() => {
+        Element.prototype.getBoundingClientRect = realGetBoundingClientRect;
+        document.elementFromPoint = realElementFromPoint;
+        window.getComputedStyle = realGetComputedStyle;
+    });
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    function makeCandidate(rect) {
+        const el = document.createElement('a');
+        el.href = '#';
+        el._rect = rect;
+        document.body.appendChild(el);
+        return el;
+    }
+
+    test('keeps a candidate whose center is occluded by a sibling but a corner is clear', () => {
+        const candidate = makeCandidate({ top: 0, left: 0, width: 100, height: 100, bottom: 100, right: 100 });
+        const sibling = document.createElement('div');
+        sibling._rect = { top: 40, left: 40, width: 20, height: 20, bottom: 60, right: 60 };
+        document.body.appendChild(sibling);
+
+        document.elementFromPoint = function(x, y) {
+            // Sibling covers only the 40-60 region (the center); corners (near 0,0 / 0,100 / 100,0 / 100,100) are clear.
+            if (x >= 40 && x <= 60 && y >= 40 && y <= 60) {
+                return sibling;
+            }
+            return candidate;
+        };
+
+        const result = filterOverlapElements([candidate]);
+
+        expect(result).toEqual([candidate]);
+    });
+
+    test('filters out a candidate occluded at every sample point by the same covering element', () => {
+        const candidate = makeCandidate({ top: 0, left: 0, width: 100, height: 100, bottom: 100, right: 100 });
+        const cover = document.createElement('div');
+        cover._rect = { top: 0, left: 0, width: 200, height: 200, bottom: 200, right: 200 };
+        document.body.appendChild(cover);
+
+        document.elementFromPoint = function() {
+            return cover;
+        };
+
+        const result = filterOverlapElements([candidate]);
+
+        expect(result).toEqual([]);
+    });
+
+    test('keeps a candidate with no occlusion at any point', () => {
+        const candidate = makeCandidate({ top: 0, left: 0, width: 100, height: 100, bottom: 100, right: 100 });
+
+        document.elementFromPoint = function() {
+            return candidate;
+        };
+
+        const result = filterOverlapElements([candidate]);
+
+        expect(result).toEqual([candidate]);
+    });
+});
