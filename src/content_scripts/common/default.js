@@ -265,7 +265,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
         hints.create("", hints.dispatchMouseClick);
     }, {repeatIgnore: true});
 
-    mapkey("F", '#1Open a link including non-semantic clickable elements (slower full scan)', function() {
+    mapkey(";fc", '#1Open a link including non-semantic clickable elements (slower full scan)', function() {
         hints.create("", hints.dispatchMouseClick, {forceDetectByCursor: true});
     }, {repeatIgnore: true});
 
