@@ -265,7 +265,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
         hints.create("", hints.dispatchMouseClick);
     }, {repeatIgnore: true});
 
-    mapkey(";fc", '#1Open a link including non-semantic clickable elements (slower full scan)', function() {
+    mapkey("F", '#1Open a link including non-semantic clickable elements (slower full scan)', function() {
         hints.create("", hints.dispatchMouseClick, {forceDetectByCursor: true});
     }, {repeatIgnore: true});
 
@@ -451,7 +451,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
     mapkey('B', '#4Go one tab history back', function() {
         RUNTIME("historyTab", {backward: true});
     }, {repeatIgnore: true});
-    mapkey('F', '#4Go one tab history forward', function() {
+    mapkey('C', '#4Go one tab history forward', function() {
         RUNTIME("historyTab", {backward: false});
     }, {repeatIgnore: true});
     mapkey('<Ctrl-6>', '#4Go to last used tab', function() {
