@@ -14,12 +14,15 @@ import {
     getColor,
     getCssSelectorsOfEditable,
     getRealRect,
+    getStructuralClickableSelector,
     getTextNodePos,
     getVisibleElements,
+    getVisibleElementsBySelector,
+    getZIndex,
     htmlEncode,
     initSKFunctionListener,
     isEditable,
-    isElementClickable,
+    isElementClickableByCursor,
     isElementDrawn,
     openOmnibar,
     refreshHints,
@@ -429,16 +432,6 @@ div.hint-scrollable {
             key !== key.toLowerCase(); // in case key is a symbol or special character
     }
 
-    function getZIndex(node) {
-        var z = 0;
-        do {
-            var i = parseInt(getComputedStyle(node).getPropertyValue('z-index'));
-            z += (isNaN(i) || i < 0) ? 0 : i;
-            node = node.parentNode;
-        } while (node && node !== document.body && node !== document && node.nodeType !== node.DOCUMENT_FRAGMENT_NODE);
-        return z;
-    }
-
     function handleHint(evt) {
         const hints = holder.querySelectorAll('div:not(:empty)');
         const hintState = refreshHints(hints, prefix);
@@ -448,7 +441,7 @@ div.hint-scrollable {
             if (typeof(_onHintKey) === 'function') {
                 if (behaviours.regionalHints) {
                     setTimeout(() => {
-                        const overlay = createOverlay(elm, elm.skColorIndex, "99");
+                        const overlay = createOverlay(elm, elm.skColorIndex, "99", new WeakMap());
                         overlay.link = elm;
                         regionalHints.attach(overlay);
                     }, 10);
@@ -691,11 +684,11 @@ div.hint-scrollable {
         holder.style.display = "";
     }
 
-    function createOverlay(e, i, alpha) {
+    function createOverlay(e, i, alpha, zIndexCache) {
         e.skColorIndex = i;
 
         const be = e.getBoundingClientRect();
-        const z = getZIndex(e);
+        const z = getZIndex(e, zIndexCache);
 
         const frame = document.createElement('mask');
         frame.style.position = "fixed";
@@ -715,16 +708,17 @@ div.hint-scrollable {
         const bof = self.coordinate();
         const style = createElementWithContent("style", _styleForClick);
         holder.prepend(style);
+        const zIndexCache = new WeakMap();
         if (behaviours.regionalHints) {
             elements.forEach(function(e, i) {
-                holder.append(createOverlay(e, i, "33"));
+                holder.append(createOverlay(e, i, "33", zIndexCache));
             });
         }
 
         let lastTop = -1, lastLeft = -1;
         var links = elements.map(function(elm, i) {
             var r = getRealRect(elm),
-                z = getZIndex(elm);
+                z = getZIndex(elm, zIndexCache);
             var left, width = Math.min(r.width, window.innerWidth);
             if (runtime.conf.hintAlign === "right") {
                 left = window.pageXOffset + r.left - bof.left + width;
@@ -799,19 +793,25 @@ div.hint-scrollable {
         }
         let elements;
         if (cssSelector === "") {
-            elements = getVisibleElements(function(e, v) {
-                if (isElementClickable(e)) {
-                    v.push(e);
-                }
-            });
+            elements = getVisibleElementsBySelector(getStructuralClickableSelector());
+            // Fall back to the expensive full-DOM cursor heuristic when the
+            // fast pass found nothing (page built entirely from non-semantic
+            // markup), or when the user has explicitly asked for it every time.
+            if (elements.length === 0 || runtime.conf.detectClickableByCursor) {
+                const structural = new Set(elements);
+                const byCursor = getVisibleElements(function(e, v) {
+                    if (!structural.has(e) && isElementClickableByCursor(e)) {
+                        v.push(e);
+                    }
+                });
+                elements = elements.concat(byCursor);
+            }
             elements = filterOverlapElements(elements);
         } else if (Array.isArray(cssSelector)) {
             elements = filterInvisibleElements(cssSelector);
         } else {
-            elements = getVisibleElements(function (e, v) {
-                if (e.matches(cssSelector) && !e.disabled && !e.readOnly) {
-                    v.push(e);
-                }
+            elements = getVisibleElementsBySelector(cssSelector, function(e) {
+                return !e.disabled && !e.readOnly;
             });
             elements = filterInvisibleElements(elements);
             elements = filterOverlapElements(elements);
@@ -865,6 +865,7 @@ div.hint-scrollable {
             }
         }
 
+        const zIndexCache = new WeakMap();
         elements = positions.map(function(e) {
             var pos = getTextNodePos(e[0], e[1]);
             var caretViewport = [0, 0, window.innerHeight, window.innerWidth];
@@ -878,7 +879,7 @@ div.hint-scrollable {
                 || pos.left > caretViewport[3]) {
                 return null;
             } else {
-                var z = getZIndex(e[0].parentNode);
+                var z = getZIndex(e[0].parentNode, zIndexCache);
                 var link = document.createElement('div');
                 if (e[1] === 0) {
                     link.className = "begin";
@@ -929,28 +930,25 @@ div.hint-scrollable {
         placeHintsHost(hintsHost);
         const cssSelector = getCssSelectorsOfEditable();
 
-        var elements = getVisibleElements(function(e, v) {
-            if (e.matches(cssSelector) && !e.disabled && !e.readOnly
-                && (e.type === "text" || e.type === "email" || e.type === "search" || e.type === "password")) {
-                v.push(e);
-            }
+        var elements = getVisibleElementsBySelector(cssSelector, function(e) {
+            return !e.disabled && !e.readOnly
+                && (e.type === "text" || e.type === "email" || e.type === "search" || e.type === "password");
         });
 
         if (elements.length === 0 && document.querySelector(cssSelector) !== null) {
             document.querySelector(cssSelector).scrollIntoView();
-            elements = getVisibleElements(function(e, v) {
-                if (e.matches(cssSelector) && !e.disabled && !e.readOnly) {
-                    v.push(e);
-                }
+            elements = getVisibleElementsBySelector(cssSelector, function(e) {
+                return !e.disabled && !e.readOnly;
             });
         }
 
         if (elements.length > 1) {
             self.enter();
             _initHolder('input');
+            const zIndexCache = new WeakMap();
             elements.forEach(function(e, i) {
                 var be = e.getBoundingClientRect();
-                var z = getZIndex(e);
+                var z = getZIndex(e, zIndexCache);
 
                 var mask = document.createElement('mask');
                 mask.style.position = "fixed";

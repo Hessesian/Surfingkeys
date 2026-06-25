@@ -240,16 +240,65 @@ function isElementVisible(elm) {
     return elm.offsetHeight > 0 && elm.offsetWidth > 0;
 }
 
-function isElementClickable(e) {
+/**
+ * The CSS selector for elements that are clickable purely by markup
+ * (semantic tags, ARIA roles, or `runtime.conf.clickableSelector`).
+ * This selector is safe to pass to `querySelectorAll` directly, unlike
+ * the cursor-based heuristic in `isElementClickableByCursor`.
+ *
+ * @returns {string}
+ */
+function getStructuralClickableSelector() {
     var cssSelector = "a, button, select, input, textarea, summary, *[onclick], *[contenteditable=true], *.jfk-button, *.goog-flat-menu-button, *[role=button], *[role=link], *[role=menuitem], *[role=option], *[role=switch], *[role=tab], *[role=checkbox], *[role=combobox], *[role=menuitemcheckbox], *[role=menuitemradio]";
     if (runtime.conf.clickableSelector.length) {
         cssSelector += ", " + runtime.conf.clickableSelector;
     }
+    return cssSelector;
+}
 
-    return e.matches(cssSelector)
-        || getComputedStyle(e).cursor === "pointer"
-        || getComputedStyle(e).cursor.substr(0, 4) === "url("
+/**
+ * Detect elements that are clickable only by virtue of computed style
+ * (`cursor: pointer` or a custom cursor image) or by being a descendant
+ * of a clickable container. This cannot be expressed as a CSS selector,
+ * so checking it for every element on a page requires visiting every
+ * element — callers should only do that when
+ * `runtime.conf.detectClickableByCursor` is enabled.
+ *
+ * @param {Element} e
+ * @returns {boolean}
+ */
+function isElementClickableByCursor(e) {
+    var cursor = getComputedStyle(e).cursor;
+    return cursor === "pointer"
+        || cursor.substr(0, 4) === "url("
         || e.closest("a, *[onclick], *[contenteditable=true], *.jfk-button, *.goog-flat-menu-button") !== null;
+}
+
+function isElementClickable(e) {
+    return e.matches(getStructuralClickableSelector()) || isElementClickableByCursor(e);
+}
+
+/**
+ * Get the cumulative z-index of an element by walking up its ancestor chain,
+ * using `cache` to avoid recomputing the (expensive) computed style of
+ * ancestors shared between multiple elements within the same call site.
+ *
+ * @param {Element} node
+ * @param {WeakMap} cache a fresh WeakMap per hint-generation pass.
+ * @returns {number}
+ */
+function getZIndex(node, cache) {
+    if (cache.has(node)) {
+        return cache.get(node);
+    }
+    var i = parseInt(getComputedStyle(node).getPropertyValue('z-index'));
+    var z = (isNaN(i) || i < 0) ? 0 : i;
+    var parent = node.parentNode;
+    if (parent && parent !== document.body && parent !== document && parent.nodeType !== node.DOCUMENT_FRAGMENT_NODE) {
+        z += getZIndex(parent, cache);
+    }
+    cache.set(node, z);
+    return z;
 }
 
 /**
@@ -436,6 +485,75 @@ function getVisibleElements(filter) {
             && getComputedStyle(e).visibility !== 'hidden'
         ) {
             filter(e, visibleElements);
+        }
+    }
+    return visibleElements;
+}
+
+/**
+ * Find every shadow root nested anywhere under `root` (recursively).
+ * Walking `root.querySelectorAll('*')` to find shadow hosts is cheap —
+ * it's a property read per element, not a forced style/layout
+ * computation — unlike the per-element `getBoundingClientRect`/
+ * `getComputedStyle` calls in `getVisibleElements`.
+ *
+ * @param {Document|ShadowRoot} root
+ * @returns {Array<ShadowRoot>}
+ */
+function getShadowRootsDeep(root) {
+    var roots = [];
+    var hosts = root.querySelectorAll('*');
+    for (var i = 0; i < hosts.length; i++) {
+        if (hosts[i].shadowRoot) {
+            roots.push(hosts[i].shadowRoot);
+            roots = roots.concat(getShadowRootsDeep(hosts[i].shadowRoot));
+        }
+    }
+    return roots;
+}
+
+/**
+ * Like `document.querySelectorAll(cssSelector)`, but also matches inside
+ * every shadow root in the document.
+ *
+ * @param {string} cssSelector
+ * @returns {Array<Element>}
+ */
+function querySelectorAllDeep(cssSelector) {
+    var result = Array.from(document.querySelectorAll(cssSelector));
+    var shadowRoots = getShadowRootsDeep(document);
+    for (var i = 0; i < shadowRoots.length; i++) {
+        result = result.concat(Array.from(shadowRoots[i].querySelectorAll(cssSelector)));
+    }
+    return result;
+}
+
+/**
+ * Like `getVisibleElements`, but starts from the (usually much smaller)
+ * set of elements matching `cssSelector` instead of scanning every
+ * element in the document. Use this whenever the desired elements can be
+ * expressed as a CSS selector — it avoids the expensive
+ * `getBoundingClientRect`/`getComputedStyle` calls for every irrelevant
+ * node on the page.
+ *
+ * @param {string} cssSelector
+ * @param {function(Element): boolean} [extraFilter] optional predicate
+ *   applied after the viewport/visibility check.
+ * @returns {Array<Element>}
+ */
+function getVisibleElementsBySelector(cssSelector, extraFilter) {
+    var candidates = querySelectorAllDeep(cssSelector);
+    var visibleElements = [];
+    for (var i = 0; i < candidates.length; i++) {
+        var e = candidates[i];
+        var rect = e.getBoundingClientRect();
+        if ((rect.top <= window.innerHeight) && (rect.bottom >= 0)
+            && (rect.left <= window.innerWidth) && (rect.right >= 0)
+            && rect.height > 0
+            && getComputedStyle(e).visibility !== 'hidden'
+            && (!extraFilter || extraFilter(e))
+        ) {
+            visibleElements.push(e);
         }
     }
     return visibleElements;
@@ -1158,8 +1276,13 @@ export {
     getTextNodePos,
     getTextNodes,
     getTextRect,
+    getShadowRootsDeep,
+    getStructuralClickableSelector,
     getVisibleElements,
+    getVisibleElementsBySelector,
     getWordUnderCursor,
+    querySelectorAllDeep,
+    getZIndex,
     hashString,
     htmlEncode,
     httpRequest,
@@ -1167,6 +1290,7 @@ export {
     initSKFunctionListener,
     isEditable,
     isElementClickable,
+    isElementClickableByCursor,
     isElementDrawn,
     isElementPartiallyInViewport,
     isInUIFrame,
