@@ -210,6 +210,17 @@ function createInsert() {
             event.sk_suppressed = true;
             return;
         }
+        if (document.activeElement === document.body) {
+            // Nothing at all has focus - unlike checking whether a resolved
+            // target merely *looks* non-editable (removed as an exit signal
+            // because it misfires on real editable targets behind shadow-DOM
+            // retargeting), this can only be true when focus has genuinely
+            // gone nowhere, e.g. a SPA removed/replaced the focused element
+            // during a re-render. Safe to exit, and don't swallow this
+            // keystroke - let it fall through to Normal mode.
+            self.exit();
+            return;
+        }
         // prevent this event to be handled by Surfingkeys' other listeners
         var realTarget = getRealEdit(event);
         if (isEditable(realTarget) && event.sk_keyName.length) {
@@ -249,7 +260,11 @@ function createInsert() {
         event.sk_suppressed = true;
     });
     self.addEventListener('focus', function(event) {
-        event.sk_suppressed = true;
+        if (document.activeElement === document.body) {
+            self.exit();
+        } else {
+            event.sk_suppressed = true;
+        }
     });
     self.addEventListener('mousedown', function(event) {
         // Only a real, physical mouse click can exit Insert mode here —
