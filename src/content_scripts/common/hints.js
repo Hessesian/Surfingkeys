@@ -2,6 +2,7 @@ import { RUNTIME, dispatchSKEvent, runtime } from './runtime.js';
 import Mode from './mode';
 import KeyboardUtils from './keyboardUtils';
 import Trie from './trie';
+import toMarkdown from './pageMarkdown.js';
 import {
     createElementWithContent,
     dispatchMouseEvent,
@@ -30,14 +31,14 @@ import {
 } from './utils.js';
 
 function placeHintsHost(host) {
-    let topLayerElement = document.querySelector("dialog");
+    let topLayerElement = document.querySelector("dialog[open]");
     if (!topLayerElement || !isElementDrawn(topLayerElement)) {
         topLayerElement = document.documentElement;
     }
     topLayerElement.appendChild(host);
 }
 
-function createRegionalHints(clipboard) {
+function createRegionalHints(clipboard, createOverlay) {
     const self = new Mode("RegionalHints");
 
     self.mappings = new Trie();
@@ -113,25 +114,30 @@ kbd {
         annotation: "learn more about target element",
         feature_group: 17,
         code: function() {
-            const system = overlay.link.innerText;
-            openOmnibar({type: "LLMChat", extra: {system}});
+            // the element the user picked, which `read_page` serves in place of the
+            // whole page -- as Markdown, so the links and images inside it survive
+            openOmnibar({type: "LLMChat", extra: {picked: toMarkdown(overlay.link)}});
             self.exit();
         }
     });
 
-    const menu = createElementWithContent('div', "", {class: "menu"});
-    getAnnotations(self.mappings).forEach((b) => {
-        const menuItem = createElementWithContent('div', "", {class: "menu-item"});
-        menuItem.appendChild(createElementWithContent('kbd', htmlEncode(KeyboardUtils.decodeKeystroke(b.word))));
-        menuItem.appendChild(createElementWithContent('span', b.annotation));
-        menu.appendChild(menuItem);
-    });
+    let overlay = null;
+
+    const buildMenu = () => {
+        const menu = createElementWithContent('div', "", {class: "menu"});
+        getAnnotations(self.mappings).forEach((b) => {
+            const menuItem = createElementWithContent('div', "", {class: "menu-item"});
+            menuItem.appendChild(createElementWithContent('kbd', htmlEncode(KeyboardUtils.decodeKeystroke(b.word))));
+            menuItem.appendChild(createElementWithContent('span', b.annotation));
+            menu.appendChild(menuItem);
+        });
+        return menu;
+    };
 
     self.addEventListener('keydown', function(event) {
         Mode.handleMapKey.call(self, event);
     });
 
-    let overlay = null;
     self.onExit = function() {
         overlay.remove();
         regionalHintsHost.remove();
@@ -139,9 +145,26 @@ kbd {
     self.attach = (elm) => {
         if (overlay) overlay.remove();
         overlay = elm;
+        if (overlay.link.parentElement) {
+            self.mappings.add("p", {
+                annotation: "select parent element",
+                feature_group: 17,
+                code: function() {
+                    const parent = overlay.link.parentElement;
+                    if (!parent) {
+                        return;
+                    }
+                    const newOverlay = createOverlay(parent, overlay.link.skColorIndex, "99");
+                    newOverlay.link = parent;
+                    self.attach(newOverlay);
+                }
+            });
+        } else {
+            self.mappings.remove("p");
+        }
         regionalHintsHost.shadowRoot.appendChild(overlay);
         placeHintsHost(regionalHintsHost);
-        overlay.appendChild(menu);
+        overlay.appendChild(buildMenu());
         self.enter();
     };
     self.onScrollStarted = () => {
@@ -152,8 +175,8 @@ kbd {
     };
     self.onScrollDone = () => {
         const be = overlay.link.getBoundingClientRect();
-        overlay.style.top = be.top + "px";
-        overlay.style.left = be.left + "px";
+        overlay.style.top = Math.max(0, Math.min(be.top, window.innerHeight - overlay.offsetHeight)) + "px";
+        overlay.style.left = Math.max(0, Math.min(be.left, window.innerWidth - overlay.offsetWidth)) + "px";
         overlay.style.display = "";
     };
     return self;
@@ -210,7 +233,7 @@ div.hint-scrollable {
     }
 
     hintsHost.shadowRoot.appendChild(hintsStyle);
-    const regionalHints = createRegionalHints(clipboard);
+    const regionalHints = createRegionalHints(clipboard, createOverlay);
 
     let numeric = false;
     /**
@@ -449,13 +472,14 @@ div.hint-scrollable {
                     _onHintKey(elm);
                 }
             } else {
+                // dispatch (element, shiftKey); the node can't cross scopes, so it rides as
+                // the event target via the "__EVENT_TARGET__" placeholder
                 if (elm.constructor.name === "Array") {
                     const target = elm[0];
-                    // remove Text Node from elm as it cannot be transitted across JS scope
                     elm[0] = "__EVENT_TARGET__";
-                    dispatchSKEvent('user', ["onHintClicked", elm], target);
+                    dispatchSKEvent('user', ["onHintClicked", elm, shiftKey], target);
                 } else {
-                    dispatchSKEvent('user', ["onHintClicked", shiftKey], elm);
+                    dispatchSKEvent('user', ["onHintClicked", "__EVENT_TARGET__", shiftKey], elm);
                 }
             }
             if (behaviours.multipleHits) {
@@ -690,12 +714,14 @@ div.hint-scrollable {
         const be = e.getBoundingClientRect();
         const z = getZIndex(e, zIndexCache);
 
+        const width = be.width - 4;
+        const height = be.height - 4;
         const frame = document.createElement('mask');
         frame.style.position = "fixed";
-        frame.style.top = be.top + "px";
-        frame.style.left = be.left + "px";
-        frame.style.width = be.width - 4 + "px";
-        frame.style.height = be.height - 4 + "px";
+        frame.style.top = Math.max(0, Math.min(be.top, window.innerHeight - height)) + "px";
+        frame.style.left = Math.max(0, Math.min(be.left, window.innerWidth - width)) + "px";
+        frame.style.width = width + "px";
+        frame.style.height = height + "px";
         frame.style.zIndex = z + 9999;
         frame.style.background = getColor(i) + alpha;
         frame.style.border = `2px solid ${getColor(i)}`;
@@ -785,9 +811,9 @@ div.hint-scrollable {
     }
 
     function createHintsForClick(cssSelector, attrs) {
-        self.statusLine = "Hints to click";
-
         attrs = attrs || {};
+        self.statusLine = attrs.statusLine || "Hints to click";
+
         for (var attr in attrs) {
             behaviours[attr] = attrs[attr];
         }
@@ -985,7 +1011,7 @@ div.hint-scrollable {
      *
      * @param cssSelector `string or array of HTMLElement`, if `links` is a string, it will be used as css selector.
      * @param {function} onHintKey a callback function on hint keys pressed.
-     * @param {object} [attrs=null] `active`: whether to activate the new tab when a link is opened, `tabbed`: whether to open a link in a new tab, `multipleHits`: whether to stay in hints mode after one hint is triggered.
+     * @param {object} [attrs=null] `active`: whether to activate the new tab when a link is opened, `tabbed`: whether to open a link in a new tab, `multipleHits`: whether to stay in hints mode after one hint is triggered, `statusLine`: the text to show on the status bar while the hints are open.
      * @name Hints.create
      * @returns {Promise} which will be resolved how many hints are created.
      * @see Hints.dispatchMouseClick

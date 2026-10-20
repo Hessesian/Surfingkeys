@@ -1,3 +1,5 @@
+import { NATIVE_LOCAL_PATH } from '../common/utils.js';
+
 export default function(
     RUNTIME,
     KeyboardUtils,
@@ -80,6 +82,12 @@ export default function(
         document.querySelector("#localPathHelpForFile").remove();
         document.querySelector("#proxySettings").style.display = "none";
         document.querySelector("#donationDiv").style.display = "none";
+        if (getBrowserName() === "Safari-iOS") {
+            // <native> reads ~/.surfingkeys.js through the app, and an iOS app has no
+            // accessible home directory to point that at. Advertising it here just
+            // sends the user chasing a read that can never succeed.
+            document.querySelector("#localPathHelpForNative").remove();
+        }
     }
     var proxyModeSelect = document.querySelector("#proxyMode>select");
     var proxyGroup = document.getElementById("proxyMode").parentElement;
@@ -297,6 +305,11 @@ export default function(
     };
 
     function getURIPath(fn) {
+        // `<native>` names the file the native app reads rather than a location
+        // this page can resolve, so it must reach the background verbatim.
+        if (fn === NATIVE_LOCAL_PATH) {
+            return fn;
+        }
         if (fn.length && !/^\w+:\/\/\w+/i.test(fn) && fn.indexOf('file:///') === -1) {
             fn = fn.replace(/\\/g, '/');
             if (fn[0] === '/') {
@@ -313,7 +326,9 @@ export default function(
             RUNTIME('loadSettingsFromUrl', {
                 url: localPath
             }, function(res) {
-                showBanner(res.status + ' to load settings from ' + localPath, 5000);
+                var from = localPath === NATIVE_LOCAL_PATH ? "~/.surfingkeys.js" : localPath;
+                showBanner(res.status + ' to load settings from ' + from
+                    + (res.error ? ': ' + res.error : ''), 5000);
                 renderKeyMappings(res);
                 if (res.snippets && res.snippets.length) {
                     localPathSaved = localPath;
@@ -326,7 +341,9 @@ export default function(
             RUNTIME('updateSettings', {
                 settings: {
                     snippets: settingsCode,
-                    localPath: getURIPath(localPathInput.value)
+                    // The trimmed value, so a stray space cannot turn `<native>`
+                    // into a file:// path that reads nothing.
+                    localPath: localPath
                 }
             });
 

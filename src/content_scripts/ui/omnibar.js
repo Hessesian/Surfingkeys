@@ -86,6 +86,21 @@ function createOmnibar(front, clipboard) {
     }
 
     const searchEngine = SearchEngine(self, front);
+
+    /*
+     * The search engines the user has configured, alias -> {prompt, url,
+     * suggestionURL}, live and read-only.
+     *
+     * `addSearchAlias` registers them with this frame and nowhere else, so this is
+     * the only place anything in the UI frame can learn which engines exist -- the
+     * LLM chat's `search_web` tool searches with them (llmtools.js). A live
+     * reference rather than a copy: an alias may be added or removed while a chat
+     * is open.
+     */
+    self.searchAliases = function() {
+        return searchEngine.aliases;
+    };
+
     self.mappings.add(KeyboardUtils.encodeKeystroke("<Ctrl-i>"), {
         annotation: "Edit selected URL with vim editor, then open",
         feature_group: 8,
@@ -170,9 +185,6 @@ function createOmnibar(front, clipboard) {
         annotation: "Copy selected item url or all listed item urls",
         feature_group: 8,
         code: function () {
-            // hide Omnibar.input, so that we could use clipboard_holder to make copy
-            self.input.style.display = "none";
-
             const fi = self.resultsDiv.querySelector('li.focused');
             let text;
             if (fi && fi.copy) {
@@ -184,9 +196,7 @@ function createOmnibar(front, clipboard) {
                     return p.url;
                 }).join("\n")
             }
-            clipboard.write(text);
-
-            self.input.style.display = "";
+            self.copy(text);
         }
     });
 
@@ -228,7 +238,7 @@ function createOmnibar(front, clipboard) {
         annotation: "Close Omnibar",
         feature_group: 8,
         code: function () {
-            front.hidePopup();
+            escapePressed();
         }
     });
 
@@ -330,6 +340,30 @@ function createOmnibar(front, clipboard) {
     self.promptSpan = ui.querySelector('#sk_omnibarSearchArea>span.prompt');
     var resultPageSpan = ui.querySelector('#sk_omnibarSearchArea>span.resultPage');
     self.resultsDiv = ui.querySelector('#sk_omnibarSearchResult');
+    // The frontend sets this display before invoking onHide/onShow, so it is the
+    // authoritative answer to "is the omnibar on screen", which a handler needs
+    // when it wants to know whether there is a user to interact with.
+    self.isVisible = () => ui.style.display !== "none";
+
+    /**
+     * Copy from the omnibar, whoever is asking -- `<Ctrl-c>` for the listed items,
+     * a handler for whatever it holds (llmchat.js `/copy`).
+     *
+     * `clipboard.write` copies by selecting a hidden textarea of its own and running
+     * execCommand('copy'), which takes the DOCUMENT's selection -- so the focused
+     * input has to give that selection up first. Hiding it does that; it is restored
+     * afterwards. That is the whole reason this is not a plain `clipboard.write`
+     * call at the call site: an omnibar copy that skips the hiding silently copies
+     * the input's contents instead of what was asked for.
+     *
+     * `notice` is passed through: null when the caller says so itself, which is what
+     * anything longer than a URL wants -- see Clipboard.write.
+     */
+    self.copy = function(text, notice) {
+        self.input.style.display = "none";
+        clipboard.write(text, notice);
+        self.input.style.display = "";
+    };
 
     function _onIput() {
         if (lastInput !== self.input.value) {
@@ -337,12 +371,31 @@ function createOmnibar(front, clipboard) {
         }
         handler.onInput && handler.onInput.call(this);
     }
+    /*
+     * Esc closes the omnibar, unless the handler has something of its own to stop
+     * first -- the LLM chat stops the answer it is working on and stays open, so the
+     * user can read where it got to (llmchat.js `onEsc`).
+     *
+     * Both routes a key can take to the omnibar come through here, because Esc is
+     * MAPPED: `Mode.handleMapKey` runs on window capture, so a mapped key never
+     * reaches the input's own keydown handler, and a stop wired only into the latter
+     * would never run. The mapping is the live route today; the input handler is kept
+     * in step so that the two cannot answer Esc differently, which means a handler's
+     * `onKeydown` must pass Esc back rather than consume it (llmchat.js does).
+     */
+    function escapePressed() {
+        if (handler && handler.onEsc && handler.onEsc()) {
+            return;
+        }
+        front.hidePopup();
+    }
+
     function _onKeyDown(evt) {
         if (handler && handler.onKeydown && handler.onKeydown.call(evt.target, evt)) {
             return;
         }
         if (Mode.isSpecialKeyOf("<Esc>", evt.sk_keyName)) {
-            front.hidePopup();
+            escapePressed();
             evt.preventDefault();
         } else if (evt.keyCode === KeyboardUtils.keyCodes.enter) {
             handler.activeTab = !evt.ctrlKey;

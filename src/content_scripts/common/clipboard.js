@@ -72,14 +72,21 @@ function createClipboard() {
      * Write text to clipboard.
      *
      * @param {string} text the text to be written to clipboard.
+     * @param {string} [notice] what the banner says instead of quoting the text
+     * back; pass null for no banner at all, when the caller reports the copy
+     * itself. Quoting is right for a URL and wrong for anything long -- a whole
+     * document echoed into the banner covers the page it was copied from.
      * @name Clipboard.write
      *
      * @example
      * Clipboard.write(window.location.href);
      */
-    self.write = function(text) {
+    self.write = function(text, notice) {
         const cb = () => {
-            showBanner("Copied: " + text);
+            if (notice === null) {
+                return;
+            }
+            showBanner(notice === undefined ? "Copied: " + text : notice);
         };
         // navigator.clipboard.writeText does not work on http site, and in chrome's background script.
         if (getBrowserName() === "Chrome") {
@@ -91,9 +98,17 @@ function createClipboard() {
             });
             cb();
         } else {
-            // works for Firefox and Safari now.
-            RUNTIME("writeClipboard", { text });
-            cb();
+            // works for Firefox and Safari now. The write is asynchronous and can
+            // fail -- on Safari it goes through the native app, which can be
+            // unreachable or refuse the write -- so wait for its answer rather than
+            // claiming success before we know it happened.
+            RUNTIME("writeClipboard", { text }, function(response) {
+                if (response && response.error) {
+                    showBanner("Failed to copy: " + response.error, 3000);
+                } else {
+                    cb();
+                }
+            });
         }
     };
 
