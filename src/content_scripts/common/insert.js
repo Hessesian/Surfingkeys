@@ -13,6 +13,7 @@ import {
     setSanitizedContent,
 } from './utils.js';
 import CursorPrompt from './cursorPrompt';
+import { fieldCaretAfterMove, fieldRange } from '../../core/textEdit';
 
 function createInsert() {
     var self = new Mode("Insert");
@@ -20,15 +21,7 @@ function createInsert() {
     function moveCursorEOL() {
         var element = getRealEdit();
         if (element.setSelectionRange !== undefined) {
-            try {
-                element.setSelectionRange(element.value.length, element.value.length);
-            } catch(err) {
-                if (err instanceof DOMException && err.name === "InvalidStateError") {
-                    // setSelectionRange does not apply
-                } else {
-                    throw err;
-                }
-            }
+            setFieldSelection(element, element.value.length, element.value.length);
         } else if (isEditable(element)) {
             // for contenteditable div
             if (element.childNodes.length > 0) {
@@ -57,105 +50,92 @@ function createInsert() {
         selection.addRange(range);//make the range you have just created the visible selection
     }
 
+    // Fields whose type has no selection (email, number, ...) throw on setSelectionRange.
+    function setFieldSelection(element, start, end) {
+        try {
+            element.setSelectionRange(start, end);
+            return true;
+        } catch (err) {
+            if (err instanceof DOMException && err.name === "InvalidStateError") {
+                return false;
+            }
+            throw err;
+        }
+    }
+
+    // In a contenteditable, select the target the way the browser renders it. A line
+    // may span several nodes, so its start is the browser's lineboundary, not offset 0.
+    function selectInContentEditable(element, target, alter) {
+        const selection = document.getSelection();
+        switch (target) {
+            case "lineStart":
+                selection.collapse(selection.focusNode, selection.focusOffset);
+                selection.modify(alter, "backward", "lineboundary");
+                break;
+            case "end":
+                moveCursorEOL();
+                break;
+            case "wordBack":
+                selection.modify(alter, "backward", "word");
+                break;
+            case "wordForward":
+                selection.modify(alter, "forward", "word");
+                break;
+            case "all":
+                selection.selectAllChildren(element);
+                break;
+        }
+    }
+
+    // The one place insert-mode commands touch the page.
+    function runEdit(element, command) {
+        const field = element.setSelectionRange !== undefined;
+        if (command.type === "move") {
+            if (command.to === "end") {
+                moveCursorEOL();
+            } else if (field) {
+                const caret = fieldCaretAfterMove(element.value, element.selectionStart, command.to);
+                setFieldSelection(element, caret, caret);
+            } else {
+                selectInContentEditable(element, command.to, "move");
+            }
+            return;
+        }
+        if (field) {
+            // select() and the current selection work even where setSelectionRange throws.
+            if (command.target === "all") {
+                element.select();
+            } else if (command.target !== "selection") {
+                const [start, end] = fieldRange(element.value, element.selectionStart, element.selectionEnd, command.target);
+                if (!setFieldSelection(element, start, end)) {
+                    return;
+                }
+            }
+        } else {
+            selectInContentEditable(element, command.target, "extend");
+        }
+        replaceEditableSelection(element, command.text);
+    }
+
+    const editKeys = [
+        ["<Ctrl-e>", "Move the cursor to the end of the line", { type: "move", to: "end" }],
+        [KeyboardUtils.platform === "Windows" ? "<Ctrl-f>" : "<Ctrl-a>", "Move the cursor to the beginning of the line", { type: "move", to: "lineStart" }],
+        ["<Ctrl-u>", "Delete all entered characters before the cursor", { type: "replace", target: "lineStart", text: "" }],
+        ["<Alt-b>", "Move the cursor Backward 1 word", { type: "move", to: "wordBack" }],
+        ["<Alt-f>", "Move the cursor Forward 1 word", { type: "move", to: "wordForward" }],
+        ["<Alt-w>", "Delete a word backwards", { type: "replace", target: "wordBack", text: "" }],
+        ["<Alt-d>", "Delete a word forwards", { type: "replace", target: "wordForward", text: "" }],
+    ];
+
     self.mappings = new Trie();
     self.map_node = self.mappings;
-    self.mappings.add(KeyboardUtils.encodeKeystroke("<Ctrl-e>"), {
-        annotation: "Move the cursor to the end of the line",
-        feature_group: 15,
-        code: moveCursorEOL
-    });
-    const keyToBOL = KeyboardUtils.platform === "Windows" ? "<Ctrl-f>" : "<Ctrl-a>";
-    self.mappings.add(KeyboardUtils.encodeKeystroke(keyToBOL), {
-        annotation: "Move the cursor to the beginning of the line",
-        feature_group: 15,
-        code: function() {
-            var element = getRealEdit();
-            if (element.setSelectionRange !== undefined) {
-                element.setSelectionRange(0, 0);
-            } else {
-                // for contenteditable div; a line may span several nodes, so let the
-                // browser find its start rather than offset 0 of the caret's node.
-                var selection = document.getSelection();
-                selection.collapse(selection.focusNode, selection.focusOffset);
-                selection.modify("move", "backward", "lineboundary");
-            }
-        }
-    });
-    self.mappings.add(KeyboardUtils.encodeKeystroke("<Ctrl-u>"), {
-        annotation: "Delete all entered characters before the cursor",
-        feature_group: 15,
-        code: function() {
-            var element = getRealEdit();
-            if (element.setSelectionRange !== undefined) {
-                element.setSelectionRange(0, element.selectionStart);
-            } else {
-                // for contenteditable div; a line may span several nodes, so let the
-                // browser find its start rather than offset 0 of the caret's node.
-                var selection = document.getSelection();
-                selection.collapse(selection.focusNode, selection.focusOffset);
-                selection.modify("extend", "backward", "lineboundary");
-            }
-            replaceEditableSelection(element, "");
-        }
-    });
-    self.mappings.add(KeyboardUtils.encodeKeystroke("<Alt-b>"), {
-        annotation: "Move the cursor Backward 1 word",
-        feature_group: 15,
-        code: function() {
-            var element = getRealEdit();
-            if (element.setSelectionRange !== undefined) {
-                var pos = nextNonWord(element.value, -1, element.selectionStart);
-                element.setSelectionRange(pos, pos);
-            } else {
-                // for contenteditable div
-                document.getSelection().modify("move", "backward", "word");
-            }
-        }
-    });
-    self.mappings.add(KeyboardUtils.encodeKeystroke("<Alt-f>"), {
-        annotation: "Move the cursor Forward 1 word",
-        feature_group: 15,
-        code: function() {
-            var element = getRealEdit();
-            if (element.setSelectionRange !== undefined) {
-                var pos = nextNonWord(element.value, 1, element.selectionStart);
-                element.setSelectionRange(pos, pos);
-            } else {
-                // for contenteditable div
-                document.getSelection().modify("move", "forward", "word");
-            }
-        }
-    });
-    self.mappings.add(KeyboardUtils.encodeKeystroke("<Alt-w>"), {
-        annotation: "Delete a word backwards",
-        feature_group: 15,
-        code: function() {
-            var element = getRealEdit();
-            if (element.setSelectionRange !== undefined) {
-                var range = nextWordRange(element.value, -1, element.selectionStart);
-                element.setSelectionRange(range[0], range[1]);
-            } else {
-                // for contenteditable div
-                document.getSelection().modify("extend", "backward", "word");
-            }
-            replaceEditableSelection(element, "");
-        }
-    });
-    self.mappings.add(KeyboardUtils.encodeKeystroke("<Alt-d>"), {
-        annotation: "Delete a word forwards",
-        feature_group: 15,
-        code: function() {
-            var element = getRealEdit();
-            if (element.setSelectionRange !== undefined) {
-                var range = nextWordRange(element.value, 1, element.selectionStart);
-                element.setSelectionRange(range[0], range[1]);
-            } else {
-                // for contenteditable div
-                document.getSelection().modify("extend", "forward", "word");
-            }
-            replaceEditableSelection(element, "");
-        }
-    });
+    for (const [key, annotation, command] of editKeys) {
+        self.mappings.add(KeyboardUtils.encodeKeystroke(key), {
+            annotation,
+            feature_group: 15,
+            code: () => runEdit(getRealEdit(), command),
+        });
+    }
     self.mappings.add(KeyboardUtils.encodeKeystroke("<Esc>"), {
         annotation: "Exit insert mode",
         feature_group: 15,
@@ -192,12 +172,7 @@ function createInsert() {
                     return;
                 }
                 element.focus();
-                if (element.setSelectionRange !== undefined) {
-                    element.select();
-                } else {
-                    document.getSelection().selectAllChildren(element);
-                }
-                replaceEditableSelection(element, corrected);
+                runEdit(element, { type: "replace", target: "all", text: corrected });
             });
         }
     });
@@ -257,7 +232,7 @@ function createInsert() {
                 // such as, to insert `,m` in case of mapkey `,,` defined.
                 var pw = last.getPrefixWord();
                 if (pw) {
-                    replaceEditableSelection(getRealEdit(), pw);
+                    runEdit(getRealEdit(), { type: "replace", target: "selection", text: pw });
                 }
             });
         }
@@ -286,30 +261,6 @@ function createInsert() {
             event.sk_suppressed = true;
         }
     });
-
-    function nextNonWord(str, dir, cur) {
-        var nonWord = /\W/;
-        cur = cur + dir;
-        for ( ; ; ) {
-            if (cur < 0) {
-                cur = 0;
-                break;
-            } else if (cur >= str.length) {
-                cur = str.length;
-                break;
-            } else if (nonWord.test(str[cur])) {
-                break;
-            } else {
-                cur = cur + dir;
-            }
-        }
-        return cur;
-    }
-
-    function nextWordRange(str, dir, cur) {
-        var pos = nextNonWord(str, dir, cur);
-        return pos === cur ? [pos, pos + 1] : [Math.min(pos, cur), Math.max(pos, cur)];
-    }
 
     var _element;
     var _enter = self.enter;
