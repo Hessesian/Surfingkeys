@@ -256,3 +256,50 @@ describe('filterOverlapElements occlusion sampling', () => {
         expect(result).toEqual([candidate]);
     });
 });
+
+describe('replaceEditableSelection', () => {
+    let replaceEditableSelection, skEventName, textarea, sent;
+    const record = (type) => (evt) => sent.push([type, evt.detail[0]]);
+
+    beforeAll(() => {
+        global.chrome = {
+            runtime: { sendMessage: jest.fn(), onMessage: { addListener: jest.fn() } },
+            extension: { getURL: jest.fn() }
+        };
+        global.DOMRect = jest.fn();
+        replaceEditableSelection = require('src/content_scripts/common/utils.js').replaceEditableSelection;
+        skEventName = require('src/content_scripts/common/runtime.js').skEventName;
+        document.addEventListener(skEventName('normal'), record('normal'));
+        document.addEventListener(skEventName('front'), record('front'));
+    });
+
+    beforeEach(() => {
+        sent = [];
+        document.body.innerHTML = '<textarea>hello world</textarea>';
+        textarea = document.querySelector('textarea');
+        document.execCommand = jest.fn(() => true);
+    });
+
+    test('deleting a collapsed selection is a no-op, not a backspace', () => {
+        textarea.setSelectionRange(3, 3);
+        expect(replaceEditableSelection(textarea, '')).toBe(true);
+        expect(document.execCommand).not.toHaveBeenCalled();
+    });
+
+    test('edits go through execCommand so the editor sees input events', () => {
+        textarea.setSelectionRange(0, 5);
+        expect(replaceEditableSelection(textarea, '')).toBe(true);
+        expect(document.execCommand).toHaveBeenCalledWith('delete', false, '');
+        replaceEditableSelection(textarea, 'hi');
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'hi');
+        expect(sent).toEqual([]);
+    });
+
+    test('a rejected edit writes nothing and disables Surfingkeys on the field', () => {
+        document.execCommand = jest.fn(() => false);
+        textarea.setSelectionRange(0, 5);
+        expect(replaceEditableSelection(textarea, '')).toBe(false);
+        expect(textarea.value).toBe('hello world');
+        expect(sent).toEqual([['front', 'showBanner'], ['normal', 'disableOnFocusedElement']]);
+    });
+});

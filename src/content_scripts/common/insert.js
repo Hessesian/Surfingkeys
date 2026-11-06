@@ -8,6 +8,7 @@ import {
     isEditable,
     llmRequest,
     locateFocusNode,
+    replaceEditableSelection,
     scrollIntoViewIfNeeded,
     setSanitizedContent,
 } from './utils.js';
@@ -84,13 +85,13 @@ function createInsert() {
         code: function() {
             var element = getRealEdit();
             if (element.setSelectionRange !== undefined) {
-                element.value = element.value.substr(element.selectionStart);
-                element.setSelectionRange(0, 0);
+                element.setSelectionRange(0, element.selectionStart);
             } else {
                 // for contenteditable div
                 var selection = document.getSelection();
-                selection.focusNode.data = selection.focusNode.data.substr(selection.focusOffset);
+                selection.setBaseAndExtent(selection.focusNode, 0, selection.focusNode, selection.focusOffset);
             }
+            replaceEditableSelection(element, "");
         }
     });
     self.mappings.add(KeyboardUtils.encodeKeystroke("<Alt-b>"), {
@@ -127,18 +128,13 @@ function createInsert() {
         code: function() {
             var element = getRealEdit();
             if (element.setSelectionRange !== undefined) {
-                var pos = deleteNextWord(element.value, -1, element.selectionStart);
-                element.value = pos[0];
-                element.setSelectionRange(pos[1], pos[1]);
+                var range = nextWordRange(element.value, -1, element.selectionStart);
+                element.setSelectionRange(range[0], range[1]);
             } else {
                 // for contenteditable div
-                var selection = document.getSelection();
-                var p0 = selection.focusOffset;
-                document.getSelection().modify("move", "backward", "word");
-                var v = selection.focusNode.data, p1 = selection.focusOffset;
-                selection.focusNode.data = v.substr(0, p1) + v.substr(p0);
-                selection.setPosition(selection.focusNode, p1);
+                document.getSelection().modify("extend", "backward", "word");
             }
+            replaceEditableSelection(element, "");
         }
     });
     self.mappings.add(KeyboardUtils.encodeKeystroke("<Alt-d>"), {
@@ -147,18 +143,13 @@ function createInsert() {
         code: function() {
             var element = getRealEdit();
             if (element.setSelectionRange !== undefined) {
-                var pos = deleteNextWord(element.value, 1, element.selectionStart);
-                element.value = pos[0];
-                element.setSelectionRange(pos[1], pos[1]);
+                var range = nextWordRange(element.value, 1, element.selectionStart);
+                element.setSelectionRange(range[0], range[1]);
             } else {
                 // for contenteditable div
-                var selection = document.getSelection();
-                var p0 = selection.focusOffset;
-                document.getSelection().modify("move", "forward", "word");
-                var v = selection.focusNode.data, p1 = selection.focusOffset;
-                selection.focusNode.data = v.substr(0, p0) + v.substr(p1);
-                selection.setPosition(selection.focusNode, p0);
+                document.getSelection().modify("extend", "forward", "word");
             }
+            replaceEditableSelection(element, "");
         }
     });
     self.mappings.add(KeyboardUtils.encodeKeystroke("<Esc>"), {
@@ -193,11 +184,16 @@ function createInsert() {
                 corrected += chunk;
             }, () => {
                 corrected = corrected.trim();
-                if (element.setSelectionRange !== undefined) {
-                    element.value = corrected;
-                } else {
-                    element.innerText = corrected;
+                if (!corrected) {
+                    return;
                 }
+                element.focus();
+                if (element.setSelectionRange !== undefined) {
+                    element.select();
+                } else {
+                    document.getSelection().selectAllChildren(element);
+                }
+                replaceEditableSelection(element, corrected);
             });
         }
     });
@@ -257,31 +253,7 @@ function createInsert() {
                 // such as, to insert `,m` in case of mapkey `,,` defined.
                 var pw = last.getPrefixWord();
                 if (pw) {
-                    var elm = getRealEdit(), str = elm.value, pos = elm.selectionStart;
-                    if (str !== undefined && pos !== undefined) {
-                        elm.value = str.substr(0, elm.selectionStart) + pw + str.substr(elm.selectionEnd);
-                        pos += pw.length;
-                        elm.setSelectionRange(pos, pos);
-                    } else {
-                        elm = document.getSelection();
-                        var range = elm.getRangeAt(0);
-                        var n = document.createTextNode(pw);
-                        if (elm.type === "Caret") {
-                            str = elm.focusNode.data;
-                            if (str === undefined) {
-                                range.insertNode(n);
-                                elm.setPosition(n, n.length);
-                            } else {
-                                pos = elm.focusOffset;
-                                elm.focusNode.data = str.substr(0, pos) + pw + str.substr(pos);
-                                elm.setPosition(elm.focusNode, pos + pw.length);
-                            }
-                        } else {
-                            range.deleteContents();
-                            range.insertNode(n);
-                            elm.setPosition(n, n.length);
-                        }
-                    }
+                    replaceEditableSelection(getRealEdit(), pw);
                 }
             });
         }
@@ -330,17 +302,9 @@ function createInsert() {
         return cur;
     }
 
-    function deleteNextWord(str, dir, cur) {
+    function nextWordRange(str, dir, cur) {
         var pos = nextNonWord(str, dir, cur);
-        var s = str;
-        if (pos > cur) {
-            s = str.substr(0, cur) + str.substr(pos);
-        } else if (pos < cur) {
-            s = str.substr(0, pos) + str.substr(cur);
-        } else {
-            s = str.substr(0, pos) + str.substr(pos + 1);
-        }
-        return [s, dir > 0 ? cur: pos];
+        return pos === cur ? [pos, pos + 1] : [Math.min(pos, cur), Math.max(pos, cur)];
     }
 
     var _element;

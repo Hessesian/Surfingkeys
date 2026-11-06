@@ -316,6 +316,35 @@ function showBanner(msg, timeout) {
 }
 
 /**
+ * Replace the current selection in `element` with `text` (empty deletes it), the
+ * way typing would. Rich editors (Teams, Slack, ProseMirror, Lexical) keep their own
+ * model of the text and update it only from input events; writing `value`, `data`
+ * or `innerText` changes the screen but not that model, so the editor later restores
+ * what it still holds. execCommand is the only API that fires trusted input events.
+ * If the editor refuses it, nothing is written and Surfingkeys steps out of this
+ * field, since any direct write would desync it again.
+ *
+ * @param {Element} element the editable element whose selection is replaced.
+ * @param {string} text
+ * @returns {boolean} whether the edit was applied.
+ */
+function replaceEditableSelection(element, text) {
+    const collapsed = element.setSelectionRange !== undefined
+        ? element.selectionStart === element.selectionEnd
+        : document.getSelection().isCollapsed;
+    // "delete" on a collapsed selection deletes the character before the caret.
+    if (!text && collapsed) {
+        return true;
+    }
+    if (document.execCommand(text ? "insertText" : "delete", false, text)) {
+        return true;
+    }
+    showBanner("This field rejected Surfingkeys' edit. Surfingkeys is off here until you leave the field.", 3000);
+    dispatchSKEvent("normal", ['disableOnFocusedElement']);
+    return false;
+}
+
+/**
  * Show message in popup.
  *
  * @param {string} msg the message to be displayed in popup.
@@ -1385,6 +1414,7 @@ export {
     openOmnibar,
     parseAnnotation,
     refreshHints,
+    replaceEditableSelection,
     reportIssue,
     rotateInput,
     safeDecodeURI,

@@ -4,6 +4,7 @@ import Mode from './mode';
 import KeyboardUtils from './keyboardUtils';
 import {
     getRealEdit,
+    initSKFunctionListener,
     isEditable,
     isElementClickable,
     isElementPartiallyInViewport,
@@ -31,6 +32,8 @@ function createDisabled(normal) {
         if (self.activatedOnElement && !document.activeElement.matches(runtime.conf.disabledOnActiveElementPattern)) {
             normal.enable();
             self.activatedOnElement = false;
+        } else if (self.disabledElement && document.activeElement !== self.disabledElement) {
+            normal.enable();
         } else if (Mode.isSpecialKeyOf("<Alt-s>", event.sk_keyName)) {
             normal.toggleBlocklist();
             self.exit();
@@ -1038,6 +1041,13 @@ function createNormal(insert) {
         dispatchSKEvent("observer", ['turnOff']);
         document.removeEventListener("mouseup", _onMouseUp);
     };
+
+    initSKFunctionListener("normal", {
+        disableOnFocusedElement: () => {
+            self.disable();
+            _disabled.disabledElement = document.activeElement;
+        },
+    });
 
     self.enable = function() {
         if (_disabled) {

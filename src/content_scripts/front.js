@@ -11,6 +11,7 @@ import {
     initSKFunctionListener,
     isEditable,
     isInUIFrame,
+    replaceEditableSelection,
     scrollIntoViewIfNeeded,
     tabOpenLink,
 } from './common/utils.js';
@@ -235,12 +236,18 @@ function createFront(insert, normal, hints, visual, browser) {
                 if (typeof elementBehindEditor.setEditorText === "function") {
                     elementBehindEditor.setEditorText(data);
                 } else {
-                    elementBehindEditor.innerText = data;
+                    elementBehindEditor.focus();
+                    window.getSelection().selectAllChildren(elementBehindEditor);
+                    replaceEditableSelection(elementBehindEditor, data);
                 }
             }
         } else {
             if (typeof elementBehindEditor.setValueWithEventDispatched === "function") {
                 elementBehindEditor.setValueWithEventDispatched(data);
+            } else if (typeof elementBehindEditor.select === "function") {
+                elementBehindEditor.focus();
+                elementBehindEditor.select();
+                replaceEditableSelection(elementBehindEditor, data);
             } else {
                 elementBehindEditor.value = data;
                 var evt = document.createEvent("HTMLEvents");
