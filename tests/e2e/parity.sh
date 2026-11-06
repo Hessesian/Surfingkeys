@@ -3,15 +3,17 @@
 # Builds BASE and the working copy, runs the e2e scenarios on both, and diffs the output.
 set -euo pipefail
 BASE=${1:?usage: parity.sh <git commit-ish>}
+: "${CHROME:?set CHROME to a Chrome/Chromium binary that can load extensions}"
 ROOT=$(git rev-parse --show-toplevel)
 TMP=$(mktemp -d)
-trap 'git -C "$ROOT" worktree remove --force "$TMP/base" 2>/dev/null || true; rm -rf "$TMP"' EXIT
-BUILD="npx webpack --mode=development --config ./config/webpack.config.js"
+trap 'git -C "$ROOT" worktree remove --force "$TMP/base" 2>/dev/null || true; rm -rf "$TMP"; git -C "$ROOT" worktree prune' EXIT
+# Clean first: a stale file left in the output dir could mask a module a refactor dropped.
+build() { rm -rf dist/development/chrome && npx webpack --mode=development --config ./config/webpack.config.js >/dev/null; }
 
 git -C "$ROOT" worktree add --detach "$TMP/base" "$BASE" >/dev/null
 ln -s "$ROOT/node_modules" "$TMP/base/node_modules"
-(cd "$TMP/base" && $BUILD >/dev/null)
-(cd "$ROOT" && $BUILD >/dev/null)
+(cd "$TMP/base" && build)
+(cd "$ROOT" && build)
 node "$ROOT/tests/e2e/run.js" "$TMP/base/dist/development/chrome" > "$TMP/base.txt"
 node "$ROOT/tests/e2e/run.js" "$ROOT/dist/development/chrome" > "$TMP/work.txt"
 diff "$TMP/base.txt" "$TMP/work.txt"

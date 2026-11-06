@@ -8,11 +8,17 @@ module.exports = async (env, log) => {
   // Ctrl-u in a contenteditable whose text is split across spans.
   let page = await openPage(env, 'basic.html');
   const edText = () => page.evaluate(() => document.getElementById('ed').innerText);
-  await page.evaluate(() => { const ed = document.getElementById('ed'); ed.focus(); document.getSelection().setPosition(ed.querySelectorAll('span')[1].firstChild, 0); });
-  await sleep(300);
+  // Focus with a real click: a script-made focus() is blurred by stealFocusOnLoad, so Ctrl-u would never reach insert mode.
+  const caretAt = async offset => {
+    await page.click('#ed'); await sleep(200);
+    await page.evaluate(o => document.getSelection().setPosition(document.getElementById('ed').querySelectorAll('span')[1].firstChild, o), offset);
+    await sleep(300);
+  };
+  await caretAt(0);
   await chord(page, 'Control', 'KeyU'); await sleep(300);
   log('span-start Ctrl-u', await edText());
-  await page.evaluate(() => { const ed = document.getElementById('ed'); ed.innerHTML = '<p><span>hello </span><b>bold</b><span> world</span></p>'; ed.focus(); document.getSelection().setPosition(ed.querySelectorAll('span')[1].firstChild, 3); });
+  await page.evaluate(() => { document.getElementById('ed').innerHTML = '<p><span>hello </span><b>bold</b><span> world</span></p>'; });
+  await caretAt(3);
   await chord(page, 'Control', 'KeyU'); await sleep(300);
   log('span-mid Ctrl-u', await edText());
   await page.close();

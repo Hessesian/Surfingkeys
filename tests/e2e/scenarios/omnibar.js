@@ -7,10 +7,10 @@ module.exports = async (env, log) => {
     const walk = root => [...root.querySelectorAll('*')].flatMap(e => [e, ...(e.shadowRoot ? walk(e.shadowRoot) : [])]);
     return Math.max(0, ...walk(document).filter(e => e.tagName === 'IFRAME').map(f => Math.round(f.getBoundingClientRect().height)));
   });
-  log('before', (await frontendHeight()) > 0);
+  log('before', await frontendHeight());
   await page.keyboard.type('o'); await sleep(800);
-  log('after-o', (await frontendHeight()) > 0);
+  log('after-o', await frontendHeight());
   await page.keyboard.press('Escape'); await sleep(500);
-  log('after-esc', (await frontendHeight()) > 0);
+  log('after-esc', await frontendHeight());
   await page.close();
 };
