@@ -331,6 +331,17 @@ function showBanner(msg, timeout) {
 function editorClaims(range, text, collapsed) {
     const node = range.startContainer;
     const target = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    if (text.includes("\n")) {
+        // An inserted "\n" stays a character inside one paragraph; editors build
+        // paragraphs or line breaks only from pasted text.
+        const clipboardData = new DataTransfer();
+        clipboardData.setData("text/plain", text);
+        const paste = new ClipboardEvent("paste", { bubbles: true, cancelable: true, composed: true, clipboardData });
+        target.dispatchEvent(paste);
+        if (paste.defaultPrevented) {
+            return true;
+        }
+    }
     const event = new InputEvent("beforeinput", {
         bubbles: true,
         cancelable: true,
@@ -343,8 +354,22 @@ function editorClaims(range, text, collapsed) {
     return event.defaultPrevented;
 }
 
-function replaceEditableSelection(element, text) {
+function replaceEditableSelection(element, text, deferred) {
     const field = element.setSelectionRange !== undefined;
+    if (!field && !deferred && text.includes("\n") && document.getSelection().rangeCount) {
+        // Multi-line text goes in as a paste, which carries no target range: the editor
+        // pastes at its own idea of the selection, and that catches up with a selection
+        // set from script only on its selectionchange, a task later. The caller may move
+        // the caret meanwhile, so the range is put back first.
+        const range = document.getSelection().getRangeAt(0).cloneRange();
+        setTimeout(() => {
+            const selection = document.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            setTimeout(() => replaceEditableSelection(element, text, true), 0);
+        }, 0);
+        return true;
+    }
     const selection = document.getSelection();
     const collapsed = field ? element.selectionStart === element.selectionEnd : selection.isCollapsed;
     // "delete" on a collapsed selection deletes the character before the caret.
