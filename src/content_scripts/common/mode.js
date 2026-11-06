@@ -6,10 +6,10 @@ import {
 } from './utils.js';
 import { RUNTIME, dispatchSKEvent, runtime, skEventName } from './runtime.js';
 import KeyboardUtils from './keyboardUtils';
-import { dispatchKey, finish } from '../../core/keyDispatch';
-import { enterMode, exitMode } from '../../core/modeStack';
+import { createModesStore, keysOf } from '../../core/modes';
 
-var mode_stack = [];
+const modes = createModesStore();
+const stack = () => modes.getState().stack;
 
 const Mode = function(name, statusLine) {
     this.name = name;
@@ -29,34 +29,65 @@ const Mode = function(name, statusLine) {
     };
 
     this.enter = function(priority, reentrant) {
-        if (!this.priority) {
-            this.priority = priority || mode_stack.length;
-        }
-        const r = enterMode(mode_stack, this, !!reentrant);
-        mode_stack = r.stack;
-        if (r.duplicate) {
-            reportIssue("Mode {0} pushed into mode stack again.".format(this.name), "Modes in stack: {0}".format(r.duplicate));
-        }
-
-        this.onEnter && this.onEnter();
-
-        Mode.showStatus();
-        return r.pos;
+        return dispatch({ type: "enter", mode: this, priority, reentrant: !!reentrant });
     };
 
     this.exit = function(peek) {
-        const r = exitMode(mode_stack, this, !!peek);
-        if (r.pos !== -1) {
-            this.priority = 0;
-        }
-        mode_stack = r.stack;
-        Mode.showStatus();
-        this.onExit && this.onExit(r.pos);
+        dispatch({ type: "exit", mode: this, peek: !!peek });
     };
 };
 
+// The dispatch position lives in the store; these keep the fields other modules
+// still read and reset on the mode object.
+Object.defineProperties(Mode.prototype, {
+    map_node: {
+        get() { return keysOf(modes.getState(), this).node; },
+        set(node) { dispatch({ type: "setKeys", mode: this, patch: { node } }); },
+    },
+    pendingMap: {
+        get() { return keysOf(modes.getState(), this).pending; },
+        set(pending) { dispatch({ type: "setKeys", mode: this, patch: { pending: pending || null } }); },
+    },
+    repeats: {
+        get() { return keysOf(modes.getState(), this).repeats; },
+        set(repeats) { dispatch({ type: "setKeys", mode: this, patch: { repeats } }); },
+    },
+    priority: {
+        get() { return modes.getState().priority.get(this); },
+        set(priority) { dispatch({ type: "setPriority", mode: this, priority }); },
+    },
+});
+
+function dispatch(msg) {
+    const { effects, reply } = modes.dispatch(msg);
+    for (const effect of effects) {
+        runEffect(effect);
+    }
+    return reply;
+}
+
+function runEffect(effect, onNoMatched) {
+    const mode = effect.mode;
+    switch (effect.type) {
+        case "reportDuplicate":
+            reportIssue("Mode {0} pushed into mode stack again.".format(mode.name), "Modes in stack: {0}".format(effect.stack.map((m) => m.name).join(",")));
+            return;
+        case "onEnter":
+            mode.onEnter && mode.onEnter();
+            return;
+        case "onExit":
+            mode.onExit && mode.onExit(effect.pos);
+            return;
+        case "showStatus":
+            Mode.showStatus();
+            return;
+        case "key":
+            return runKeyEffect(mode, effect.effect, onNoMatched);
+    }
+}
+
 Mode.getCurrent = () => {
-    return mode_stack[0];
+    return stack()[0];
 };
 
 Mode.specialKeys = {
@@ -91,8 +122,8 @@ function onAfterHandler(mode, event) {
 }
 
 function handleStack(eventName, event, cb) {
-    for (var i = 0; i < mode_stack.length && !event.sk_stopPropagation; i++) {
-        var m = mode_stack[i];
+    for (var i = 0; i < stack().length && !event.sk_stopPropagation; i++) {
+        var m = stack()[i];
         if (!event.sk_suppressed && m.eventListeners.hasOwnProperty(eventName)) {
             var handler = m.eventListeners[eventName];
             handler(event);
@@ -112,7 +143,7 @@ var suppressScrollEvent = 0, _listenedEvents = {
     },
     "keydown": function (event) {
         event.sk_keyName = KeyboardUtils.getKeyChar(event);
-        if (mode_stack.length === 0 && window !== top) {
+        if (stack().length === 0 && window !== top) {
             // automatically boots iframe on demand
             dispatchSKEvent('iframeBoot');
             document.addEventListener(skEventName("userSettingsLoaded"), () => {
@@ -143,7 +174,7 @@ var suppressScrollEvent = 0, _listenedEvents = {
 };
 
 function init(cb) {
-    mode_stack = [];
+    dispatch({ type: "reset" });
     for (var evtName in _listenedEvents) {
         window.addEventListener(evtName, _listenedEvents[evtName], true);
     }
@@ -250,8 +281,8 @@ Mode.init = (cb)=> {
 
 
 Mode.showStatus = function() {
-    if (document.hasFocus() && mode_stack.length) {
-        var cm = mode_stack[0];
+    if (document.hasFocus() && stack().length) {
+        var cm = stack()[0];
         var sl = cm.statusLine || (runtime.conf.showModeStatus ? cm.name : "");
         if (sl !== "" && window !== top && !isInUIFrame()) {
             var pathname = window.location.pathname.split('/');
@@ -263,27 +294,8 @@ Mode.showStatus = function() {
     }
 };
 
-function readKeyState(mode) {
-    return { node: mode.map_node, pending: mode.pendingMap || null, repeats: mode.repeats };
-}
-
-// The dispatch state stays on the mode object while other modules still read and
-// reset map_node, pendingMap and repeats there directly.
-function writeKeyState(mode, s) {
-    mode.map_node = s.node;
-    mode.pendingMap = s.pending;
-    if (s.repeats !== undefined) {
-        mode.repeats = s.repeats;
-    }
-}
-
 Mode.finish = function (mode) {
-    const f = finish(readKeyState(mode), mode.mappings);
-    if (f.changed) {
-        writeKeyState(mode, f.state);
-        mode.isTrustedEvent && dispatchSKEvent("front", ['hideKeystroke']);
-    }
-    return f.changed;
+    return dispatch({ type: "finish", mode, root: mode.mappings, trusted: !!mode.isTrustedEvent });
 };
 
 function repeatCode(code) {
@@ -335,29 +347,30 @@ Mode.handleMapKey = function(event, onNoMatched) {
         key = KeyboardUtils.encodeKeystroke("<Esc>");
     }
 
-    const r = dispatchKey(readKeyState(this), {
+    const input = {
         key,
         isEsc: isEscKey,
         trusted: !!this.isTrustedEvent,
         root: this.mappings,
         digitForRepeat: !!runtime.conf.digitForRepeat,
         repeatThreshold: runtime.conf.repeatThreshold,
-    });
-    writeKeyState(this, r.state);
-    if (r.stopPropagation !== undefined) {
-        event.sk_stopPropagation = r.stopPropagation;
+    };
+    const { effects, reply } = modes.dispatch({ type: "key", mode: this, input });
+    // The event's flags are set before the mapping runs, as the mapping may read them.
+    if (reply.stopPropagation !== undefined) {
+        event.sk_stopPropagation = reply.stopPropagation;
     }
-    if (r.suppressed !== undefined) {
-        event.sk_suppressed = r.suppressed;
+    if (reply.suppressed !== undefined) {
+        event.sk_suppressed = reply.suppressed;
     }
     let finished = false;
-    for (const effect of r.effects) {
-        const ret = runKeyEffect(this, effect, onNoMatched);
-        if (effect.type === "finish") {
+    for (const effect of effects) {
+        const ret = runEffect(effect, onNoMatched);
+        if (effect.effect.type === "finish") {
             finished = ret;
         }
     }
-    return r.done === "finish" ? finished : r.done;
+    return reply.done === "finish" ? finished : reply.done;
 };
 
 Mode.checkEventListener = (onMissing) => {

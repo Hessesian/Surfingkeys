@@ -98,20 +98,21 @@ describe("dispatchKey", () => {
 
 describe("mode stack", () => {
     const m = (name: string, priority: number) => ({ name, priority });
+    const rank = (x: { priority: number }) => x.priority;
 
     test("entering sorts by priority, highest first", () => {
         const normal = m("Normal", 1), insert = m("Insert", 2), disabled = m("Disabled", 99);
-        let stack = enterMode([], normal, false).stack;
-        stack = enterMode(stack, disabled, false).stack;
-        stack = enterMode(stack, insert, false).stack;
+        let stack = enterMode([], normal, false, rank).stack;
+        stack = enterMode(stack, disabled, false, rank).stack;
+        stack = enterMode(stack, insert, false, rank).stack;
         expect(stack.map((x) => x.name)).toEqual(["Disabled", "Insert", "Normal"]);
     });
 
     test("re-entering pops the modes above; otherwise it is reported", () => {
         const a = m("A", 1), b = m("B", 1);
         const stack = [b, a];
-        expect(enterMode(stack, a, true).stack).toEqual([a]);
-        expect(enterMode(stack, a, false)).toMatchObject({ stack: [b, a], pos: 1, duplicate: "B,A" });
+        expect(enterMode(stack, a, true, rank).stack).toEqual([a]);
+        expect(enterMode(stack, a, false, rank)).toMatchObject({ stack: [b, a], pos: 1, duplicate: [b, a] });
     });
 
     test("exit pops the mode and those above; peek removes only it", () => {

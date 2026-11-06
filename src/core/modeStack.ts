@@ -1,35 +1,29 @@
 // Pure mode-stack transitions. The stack is ordered by priority, highest first, and
 // the head is the mode that sees events first.
 
-export interface Ranked {
-    readonly name: string;
-    readonly priority: number;
-}
-
 export type EnterResult<M> = {
     readonly stack: readonly M[];
     // Where the mode was before entering, -1 if it was not on the stack.
     readonly pos: number;
     // Set when a mode already under others is entered without `reentrant`.
-    readonly duplicate?: string;
+    readonly duplicate?: readonly M[];
 };
 
 // Stable, so modes of equal priority keep their order.
-function byPriority<M extends Ranked>(stack: readonly M[]): readonly M[] {
-    return [...stack].sort((a, b) => b.priority - a.priority);
+function byPriority<M>(stack: readonly M[], rank: (m: M) => number): readonly M[] {
+    return [...stack].sort((a, b) => rank(b) - rank(a));
 }
 
-export function enterMode<M extends Ranked>(stack: readonly M[], mode: M, reentrant: boolean): EnterResult<M> {
+export function enterMode<M>(stack: readonly M[], mode: M, reentrant: boolean, rank: (m: M) => number): EnterResult<M> {
     const pos = stack.indexOf(mode);
     if (pos === -1) {
-        return { stack: byPriority([mode, ...stack]), pos };
+        return { stack: byPriority([mode, ...stack], rank), pos };
     }
     if (pos > 0 && reentrant) {
         // Re-entering pops every mode above it.
-        return { stack: byPriority(stack.slice(pos)), pos };
+        return { stack: byPriority(stack.slice(pos), rank), pos };
     }
-    const duplicate = pos > 0 ? stack.map((m) => m.name).join(",") : undefined;
-    return { stack: byPriority(stack), pos, ...(duplicate ? { duplicate } : {}) };
+    return { stack: byPriority(stack, rank), pos, ...(pos > 0 ? { duplicate: stack } : {}) };
 }
 
 export function exitMode<M>(stack: readonly M[], mode: M, peek: boolean): { readonly stack: readonly M[]; readonly pos: number } {
