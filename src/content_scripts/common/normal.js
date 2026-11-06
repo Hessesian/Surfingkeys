@@ -1,6 +1,7 @@
 import Trie from './trie';
 import { RUNTIME, dispatchSKEvent, runtime } from './runtime.js';
 import Mode from './mode';
+import createScroller from './scroller';
 import KeyboardUtils from './keyboardUtils';
 import {
     getRealEdit,
@@ -10,7 +11,6 @@ import {
     isElementPartiallyInViewport,
     isInUIFrame,
     mapInMode,
-    scrollIntoViewIfNeeded,
     setSanitizedContent,
     showBanner,
     showPopup,
@@ -242,7 +242,7 @@ function createNormal(insert) {
         }
     });
     self.addEventListener('blur', function(event) {
-        keyHeld = 0;
+        scroller.release();
     });
     var _inFocusHandler = false;
     self.addEventListener('focus', function(event) {
@@ -266,9 +266,7 @@ function createNormal(insert) {
         _inFocusHandler = false;
     });
     self.addEventListener('keyup', function(event) {
-        setTimeout(function() {
-            keyHeld = 0;
-        }, 0);
+        setTimeout(scroller.release, 0);
     });
     self.addEventListener('mousedown', function(event) {
         // The isTrusted read-only property of the Event interface is a boolean
@@ -350,137 +348,8 @@ function createNormal(insert) {
     });
 
     self.repeats = "";
-    var keyHeld = 0;
-
-    var scrollNodes, scrollIndex = 0,
-        lastKeys;
-
-    function easeFn(t, b, c, d) {
-        // t: current time, b: begInnIng value, c: change In value, d: duration
-        return (t === d) ? b + c : c * (-Math.pow(2, -10 * t / d) + 1) + b;
-    }
-
-    var _nodesHasSKScroll = [];
-    function initScroll(elm) {
-        elm.skScrollBy = function(x, y) {
-            if (runtime.conf.smartPageBoundary && ((this === document.scrollingElement)
-                || scrollNodes.length === 1 && this === scrollNodes[0])) {
-                if (this.scrollTop === 0 && y < 0) {
-                    return dispatchSKEvent("hints", ['topBoundaryHit']);
-                }
-                if (this.scrollHeight - this.scrollTop <= this.clientHeight + 1 && y > 0) {
-                    return dispatchSKEvent("hints", ['bottomBoundaryHit']);
-                }
-            }
-            if (RUNTIME.repeats > 1) {
-                x = RUNTIME.repeats * x;
-                y = RUNTIME.repeats * y;
-                RUNTIME.repeats = 0;
-            }
-            if (runtime.conf.smoothScroll) {
-                var d = Math.max(100, 20 * Math.log(Math.abs( x || y)));
-                elm.smoothScrollBy(x, y, d);
-            } else {
-                dispatchSKEvent("hints", ['scrollStarted']);
-                elm.scrollBy({
-                    'behavior': 'instant',
-                    'left': x,
-                    'top': y,
-                });
-                dispatchSKEvent("hints", ['scrollDone']);
-            }
-        };
-        elm.safeScroll_ = (prop, value, increasing) => {
-            const clientHeight = elm === document.scrollingElement ? window.innerHeight : elm.clientHeight;
-            const clientWidth = elm === document.scrollingElement ? window.innerWidth : elm.clientWidth;
-            const range = prop === "scrollTop" ? [0, elm.scrollHeight - clientHeight] : [0, elm.scrollWidth - clientWidth];
-            const boundary = increasing ? range[1] : range[0];
-            if (value >= range[0] && value <= range[1]) {
-                elm[prop] = value;
-                return false;
-            } else {
-                elm[prop] = boundary;
-                return true;
-            }
-        };
-        elm.smoothScrollBy = function(x, y, d) {
-            if (!keyHeld) {
-                var [prop, distance] = y ? ['scrollTop', y] : ['scrollLeft', x],
-                    duration = d,
-                    previousTimestamp = 0,
-                    originValue = elm[prop],
-                    stepCompleted = false;
-                keyHeld = 1;
-                function step(t) {
-                    if (previousTimestamp === 0) {
-                        // init previousTimestamp in first step
-                        previousTimestamp = t;
-                        dispatchSKEvent("hints", ['scrollStarted']);
-                        return window.requestAnimationFrame(step);
-                    }
-                    var old = elm[prop], delta = (t - previousTimestamp) * distance / duration;
-                    let boundaryHit = false;
-                    if (Math.abs(old + delta - originValue) >= Math.abs(distance)) {
-                        stepCompleted = true;
-                        if (keyHeld > runtime.conf.scrollFriction) {
-                            boundaryHit = elm.safeScroll_(prop, old + delta, distance > 0);
-                            originValue = elm[prop];
-                        } else if (keyHeld > 0) {
-                            keyHeld ++;
-                        } else {
-                            boundaryHit = elm.safeScroll_(prop, originValue + distance, distance > 0);
-                        }
-                    } else {
-                        boundaryHit = elm.safeScroll_(prop, old + delta, distance > 0);
-                    }
-                    previousTimestamp = t;
-
-                    if (!keyHeld && (boundaryHit
-                        || stepCompleted )// distance completed
-                    ) {
-                        elm.style.scrollBehavior = '';
-                        dispatchSKEvent("hints", ['scrollDone']);
-                    } else {
-                        window.requestAnimationFrame(step);
-                    }
-                }
-                elm.style.scrollBehavior = 'auto';
-                window.requestAnimationFrame(step);
-            }
-        };
-        _nodesHasSKScroll.push(elm);
-    }
-
-    function setScrollNodes(nodes) {
-        scrollNodes = nodes;
-        scrollNodes.forEach(function (n) {
-            n.removeEventListener('mousedown', scrollableMousedownHandler);
-            n.addEventListener('mousedown', scrollableMousedownHandler);
-            n.dataset.hint_scrollable = true;
-        });
-        scrollIndex = 0;
-    }
-
-    // set scrollIndex to the highest node
-    function initScrollIndex() {
-        if (!scrollNodes || scrollNodes.length === 0) {
-            setScrollNodes(Mode.getScrollableElements());
-        }
-    }
-
-    function scrollableMousedownHandler(e) {
-        var n = e.currentTarget;
-        if (!n.contains(e.target)) return;
-        var index = scrollNodes.lastIndexOf(e.target);
-        for (var i = scrollNodes.length - 1; i >= 0 && index === -1; i--) {
-            if (scrollNodes[i] !== document.body && scrollNodes[i].contains(e.target)) {
-                index = i;
-            }
-        }
-        if (index !== -1) {
-            scrollIndex = index;
-        }
-    }
+    var lastKeys;
+    const scroller = createScroller((elm) => self.highlightElement(elm));
 
     self.highlightElement = function(elm) {
         var rc;
@@ -504,49 +373,6 @@ function createNormal(insert) {
             }
         }]);
     }
-    function changeScrollTarget(silent) {
-        scrollNodes = Mode.getAllScrollableElements();
-        if (scrollNodes.length > 0) {
-            scrollIndex = (scrollIndex + 1) % scrollNodes.length;
-            var sn = scrollNodes[scrollIndex];
-            scrollIntoViewIfNeeded(sn);
-            if (!silent) {
-                self.highlightElement(sn);
-            }
-        }
-    }
-
-    const scrollTypeDirections = new Map([
-        ['down', 'vertical'],
-        ['up', 'vertical'],
-        ['pageDown', 'vertical'],
-        ['fullPageDown', 'vertical'],
-        ['pageUp', 'vertical'],
-        ['fullPageUp', 'vertical'],
-        ['top', 'vertical'],
-        ['bottom', 'vertical'],
-        ['byRatio', 'vertical'],
-        ['left', 'horizontal'],
-        ['right', 'horizontal'],
-        ['leftmost', 'horizontal'],
-        ['rightmost', 'horizontal']
-    ]);
-
-    function canScrollInDirection(elm, direction) {
-        const isMainPage = elm === document.scrollingElement || elm === document.body;
-        const clientHeight = isMainPage ? window.innerHeight : elm.clientHeight;
-        const clientWidth = isMainPage ? window.innerWidth : elm.clientWidth;
-
-        switch (direction) {
-            case 'vertical':
-                return elm.scrollHeight > clientHeight + 1;
-            case 'horizontal':
-                return elm.scrollWidth > clientWidth + 1;
-            default:
-                return false;
-        }
-    }
-
     /**
      * Scroll within current target.
      *
@@ -554,113 +380,9 @@ function createNormal(insert) {
      * @name Normal.scroll
      *
      */
-    self.scroll = function(type) {
-        initScrollIndex();
-        var scrollNode = document.scrollingElement;
-        if (scrollNodes.length > 0) {
-            scrollNode = scrollNodes[scrollIndex];
-            if (scrollNode !== document.scrollingElement && scrollNode !== document.body) {
-                var br = scrollNode.getBoundingClientRect();
-                if (br.width === 0 || br.height === 0 || !isElementPartiallyInViewport(scrollNode)
-                    || !Mode.hasScroll(scrollNode, 'x', 16) && !Mode.hasScroll(scrollNode, 'y', 16)) {
-                    // Recompute scrollable elements, the webpage has changed.
-                    self.refreshScrollableElements();
-                    scrollNode = scrollNodes[scrollIndex];
-                }
-            }
-        }
-        if (!scrollNode && !document.scrollingElement && document.body) {
-            // to set document.body.style.overflow auto will make document.scrollingElement null
-            // set visible to bring it back.
-            document.body.style.overflow = 'visible';
-            scrollNode = document.scrollingElement;
-        }
-        if (!scrollNode) {
-            // scrollNode could be null on a page with frameset as its body.
-            return;
-        }
-
-        // Fall back to document scrolling if enabled and current element can't scroll in requested direction
-        if (runtime.conf.scrollFallback &&
-            scrollNode !== document.scrollingElement &&
-            scrollNode !== document.body) {
-            const direction = scrollTypeDirections.get(type);
-
-            if (direction && !canScrollInDirection(scrollNode, direction)) {
-                scrollNode = document.scrollingElement;
-                if (!scrollNode && document.body) {
-                    document.body.style.overflow = 'visible';
-                    scrollNode = document.scrollingElement;
-                }
-            }
-        }
-
-        if (!scrollNode.skScrollBy) {
-            initScroll(scrollNode);
-        }
-        var size = (scrollNode === document.scrollingElement) ? [window.innerWidth, window.innerHeight] : [scrollNode.offsetWidth, scrollNode.offsetHeight];
-        scrollNode.lastScrollTop = scrollNode.scrollTop;
-        scrollNode.lastScrollLeft = scrollNode.scrollLeft;
-        switch (type) {
-            case 'down':
-                scrollNode.skScrollBy(0, runtime.conf.scrollStepSize);
-                break;
-            case 'up':
-                scrollNode.skScrollBy(0, -runtime.conf.scrollStepSize);
-                break;
-            case 'pageDown':
-                scrollNode.skScrollBy(0, Math.round(size[1] / 2));
-                break;
-            case 'fullPageDown':
-                scrollNode.skScrollBy(0, size[1]);
-                break;
-            case 'pageUp':
-                scrollNode.skScrollBy(0, -Math.round(size[1] / 2));
-                break;
-            case 'fullPageUp':
-                scrollNode.skScrollBy(0, -size[1]);
-                break;
-            case 'top':
-                scrollNode.skScrollBy(0, -scrollNode.scrollTop);
-                break;
-            case 'bottom':
-                scrollNode.skScrollBy(scrollNode.scrollLeft, scrollNode.scrollHeight - scrollNode.scrollTop);
-                break;
-            case 'left':
-                scrollNode.skScrollBy(-Math.round(runtime.conf.scrollStepSize / 2), 0);
-                break;
-            case 'right':
-                scrollNode.skScrollBy(Math.round(runtime.conf.scrollStepSize / 2), 0);
-                break;
-            case 'leftmost':
-                scrollNode.skScrollBy(-scrollNode.scrollLeft - 10, 0);
-                break;
-            case 'rightmost':
-                scrollNode.skScrollBy(scrollNode.scrollWidth - scrollNode.scrollLeft - size[0] + 20, 0);
-                break;
-            case 'byRatio':
-                var y = parseInt(RUNTIME.repeats * scrollNode.scrollHeight / 100) - size[1] / 2 - scrollNode.scrollTop;
-                RUNTIME.repeats = 0;
-                scrollNode.skScrollBy(0, y);
-                break;
-            default:
-                break;
-        }
-        dispatchSKEvent("observer", ['turnOff']);
-    };
-
-    self.refreshScrollableElements = function () {
-        setScrollNodes(Mode.getAllScrollableElements());
-        return scrollNodes;
-    };
-
-    self.addScrollableElement = function(elm) {
-        if (!scrollNodes || !elm.contains(scrollNodes[scrollIndex]) && scrollNodes.indexOf(elm) === -1) {
-            initScrollIndex();
-            scrollNodes.push(elm);
-            scrollIndex = scrollNodes.length - 1;
-        }
-    };
+    self.scroll = scroller.scroll;
+    self.refreshScrollableElements = scroller.refresh;
+    self.addScrollableElement = scroller.add;
 
     self.rotateFrame = function() {
         RUNTIME('nextFrame', {
@@ -729,19 +451,7 @@ function createNormal(insert) {
      */
     self.jumpVIMark = function(mark) {
         if (mark === "'") {
-            let scrollNode = document.scrollingElement;
-            initScrollIndex();
-            if (scrollNodes.length > 0) {
-                scrollNode = scrollNodes[scrollIndex];
-                if (scrollNode.lastScrollTop !== undefined && scrollNode.lastScrollLeft !== undefined) {
-                    const lt = scrollNode.scrollTop;
-                    const ll = scrollNode.scrollLeft;
-                    scrollNode.scrollTop = scrollNode.lastScrollTop;
-                    scrollNode.scrollLeft = scrollNode.lastScrollLeft;
-                    scrollNode.lastScrollTop = lt;
-                    scrollNode.lastScrollLeft = ll;
-                }
-            }
+            scroller.swapLastPosition();
         } else {
             RUNTIME('jumpVIMark', {
                 mark: mark
@@ -871,26 +581,14 @@ function createNormal(insert) {
         annotation: "Capture scrolling element",
         feature_group: 7,
         code: function() {
-            var scrollNode = document.scrollingElement;
-            initScrollIndex();
-            if (scrollNodes.length > 0) {
-                scrollNode = scrollNodes[scrollIndex];
-            }
-            self.captureElement(scrollNode);
+            self.captureElement(scroller.current());
         }
     });
 
     self.mappings.add("cS", {
         annotation: "Reset scroll target",
         feature_group: 2,
-        code: function() {
-            scrollNodes = null;
-            initScrollIndex();
-            if (scrollNodes.length > 0) {
-                var scrollNode = scrollNodes[scrollIndex];
-                self.highlightElement(scrollNode);
-            }
-        }
+        code: scroller.reset
     });
 
     const bindScrollForHints = (action) => {
@@ -986,9 +684,7 @@ function createNormal(insert) {
         annotation: "Change scroll target",
         feature_group: 2,
         repeatIgnore: true,
-        code: function() {
-            changeScrollTarget();
-        }
+        code: () => scroller.next()
     });
 
     self.mappings.add("/", {
@@ -1060,10 +756,6 @@ function createNormal(insert) {
 
     self.onExit = function() {
         dispatchSKEvent("observer", ['turnOff']);
-        _nodesHasSKScroll.forEach(function(n) {
-            delete n.skScrollBy;
-            delete n.smoothScrollBy;
-        });
     };
 
     return self;
