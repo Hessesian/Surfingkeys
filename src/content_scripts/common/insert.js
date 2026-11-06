@@ -73,9 +73,11 @@ function createInsert() {
             if (element.setSelectionRange !== undefined) {
                 element.setSelectionRange(0, 0);
             } else {
-                // for contenteditable div
+                // for contenteditable div; a line may span several nodes, so let the
+                // browser find its start rather than offset 0 of the caret's node.
                 var selection = document.getSelection();
-                selection.setPosition(selection.focusNode, 0);
+                selection.collapse(selection.focusNode, selection.focusOffset);
+                selection.modify("move", "backward", "lineboundary");
             }
         }
     });
@@ -87,9 +89,11 @@ function createInsert() {
             if (element.setSelectionRange !== undefined) {
                 element.setSelectionRange(0, element.selectionStart);
             } else {
-                // for contenteditable div
+                // for contenteditable div; a line may span several nodes, so let the
+                // browser find its start rather than offset 0 of the caret's node.
                 var selection = document.getSelection();
-                selection.setBaseAndExtent(selection.focusNode, 0, selection.focusNode, selection.focusOffset);
+                selection.collapse(selection.focusNode, selection.focusOffset);
+                selection.modify("extend", "backward", "lineboundary");
             }
             replaceEditableSelection(element, "");
         }
