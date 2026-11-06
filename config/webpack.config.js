@@ -23,7 +23,7 @@ function modifyManifest(browser, mode, buffer) {
         if (mode === "development") {
             manifest.browser_specific_settings = {
                 gecko: {
-                    id: "surfingkeys@github.com"
+                    id: "surfingkeys-ts@github.com"
                 }
             };
         }
@@ -72,10 +72,6 @@ function modifyManifest(browser, mode, buffer) {
         manifest.action = manifest.browser_action;
         delete manifest.browser_action;
         delete manifest.content_security_policy;
-
-        if (mode === "development") {
-            manifest.key = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAneIRqYRqG/0RoYzpWoyeeO8KxxvWZvIabABbeQyHQ2PFOf81j/O5J28HGAEQJ56AptKMTcTeG2qZga9B2u9k98OmRcGp8BDco6fh1vD6/x0fWfehPeub5IcEcQmCd1lBuVa8AtUqV3C+He5rS4g8dB8g8GRlSPPSiDSVNMv+iwKAk7TbM3TKz6DyFO8eCtWXr6wJCcYeJA+Mub7o8DKIHKgv8XH8+GbJGjeeIUBU7mlGlyS7ivdsG1V6D2/Ldx0O1e6sRn7f9jiC4Xy1N+zgZ7BshYbnlbwedomg1d5kuo5m4rS+8BgTchPPkhkvEs62MI4e+fmQd0oGgs7PtMSrTwIDAQAb";
-        }
     }
 
     // pretty print to JSON with two spaces
