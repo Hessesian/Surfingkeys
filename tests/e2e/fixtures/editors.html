@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
+</head><body>
+<h3>ckeditor</h3><div id="ck"></div>
+<h3>lexical</h3><div id="lx" contenteditable="true" style="border:1px solid #ccc;min-height:40px"></div>
+<h3>plain</h3><div id="pl" contenteditable="true" style="border:1px solid #ccc">hello <b>bold</b> world</div>
+<h3>textarea</h3><textarea id="ta">hello bold world</textarea>
+<script type="module">
+import { createEditor, $getRoot, $createParagraphNode, $createTextNode } from 'https://esm.sh/lexical@0.17.1';
+import { registerRichText } from 'https://esm.sh/@lexical/rich-text@0.17.1?deps=lexical@0.17.1';
+const lx = createEditor({ namespace: 't', onError: e => console.error(e) });
+lx.setRootElement(document.getElementById('lx'));
+registerRichText(lx);
+window.lxReset = () => new Promise(r => lx.update(() => { const root = $getRoot(); root.clear(); const p = $createParagraphNode(); p.append($createTextNode('hello '), $createTextNode('bold').toggleFormat('bold'), $createTextNode(' world')); root.append(p); p.selectEnd(); }, { onUpdate: r }));
+window.lxText = () => lx.getEditorState().read(() => $getRoot().getTextContent());
+window.lexical = lx;
+ClassicEditor.create(document.getElementById('ck')).then(ed => {
+  window.ck = ed;
+  window.ckReset = () => { ed.setData('<p>hello <strong>bold</strong> world</p>'); ed.model.change(w => w.setSelection(ed.model.document.getRoot().getChild(0), 'end')); };
+  window.ckText = () => ed.getData();
+  window.ready = true;
+});
+</script></body></html>

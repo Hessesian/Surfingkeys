@@ -15,7 +15,9 @@
     "build:testdata": "webpack --mode=production --config ./config/webpack.test.config.js",
     "build": "npm-run-all clean test build:doc build:prod",
     "test": "jest",
-    "bench:visual": "node tests/perf/visualScan.bench.js"
+    "bench:visual": "node tests/perf/visualScan.bench.js",
+    "e2e": "node tests/e2e/run.js dist/development/chrome",
+    "e2e:parity": "bash tests/e2e/parity.sh"
   },
   "repository": {
     "type": "git",
