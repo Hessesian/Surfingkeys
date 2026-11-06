@@ -6,6 +6,8 @@ import {
 } from './utils.js';
 import { RUNTIME, dispatchSKEvent, runtime, skEventName } from './runtime.js';
 import KeyboardUtils from './keyboardUtils';
+import { dispatchKey, finish } from '../../core/keyDispatch';
+import { enterMode, exitMode } from '../../core/modeStack';
 
 var mode_stack = [];
 
@@ -27,60 +29,29 @@ const Mode = function(name, statusLine) {
     };
 
     this.enter = function(priority, reentrant) {
-        var pos = mode_stack.indexOf(this);
         if (!this.priority) {
             this.priority = priority || mode_stack.length;
         }
-
-        if (pos === -1) {
-            // push this mode into stack
-            mode_stack.unshift(this);
-        } else if (pos > 0) {
-            if (reentrant) {
-                // pop up all the modes over this
-                mode_stack = mode_stack.slice(pos);
-            } else {
-                var modeList = mode_stack.map(function(u) { return u.name; }).join(',');
-                reportIssue("Mode {0} pushed into mode stack again.".format(this.name), "Modes in stack: {0}".format(modeList));
-            }
-            // stackTrace();
+        const r = enterMode(mode_stack, this, !!reentrant);
+        mode_stack = r.stack;
+        if (r.duplicate) {
+            reportIssue("Mode {0} pushed into mode stack again.".format(this.name), "Modes in stack: {0}".format(r.duplicate));
         }
-
-        mode_stack.sort(function(a,b) {
-            return (a.priority < b.priority) ? 1 : ((b.priority < a.priority) ? -1 : 0);
-        } );
-        // var modes = mode_stack.map(function(m) {
-        // return m.name;
-        // }).join('->');
-        // console.log('enter {0}, {1}'.format(this.name, modes));
 
         this.onEnter && this.onEnter();
 
         Mode.showStatus();
-        return pos;
+        return r.pos;
     };
 
     this.exit = function(peek) {
-        var pos = mode_stack.indexOf(this);
-        if (pos !== -1) {
+        const r = exitMode(mode_stack, this, !!peek);
+        if (r.pos !== -1) {
             this.priority = 0;
-            if (peek) {
-                // for peek exit, we need push modes above this back to the stack.
-                mode_stack.splice(pos, 1);
-            } else {
-                // otherwise, we just pop all modes above this inclusively.
-                pos++;
-                var popup = mode_stack.slice(0, pos);
-                mode_stack = mode_stack.slice(pos);
-            }
-
-            // var modes = mode_stack.map(function(m) {
-            // return m.name;
-            // }).join('->');
-            // console.log('exit {0}, {1}'.format(this.name, modes));
         }
+        mode_stack = r.stack;
         Mode.showStatus();
-        this.onExit && this.onExit(pos);
+        this.onExit && this.onExit(r.pos);
     };
 };
 
@@ -292,23 +263,71 @@ Mode.showStatus = function() {
     }
 };
 
-Mode.finish = function (mode) {
-    var ret = false;
-    if (mode.map_node !== mode.mappings || mode.pendingMap != null || mode.repeats) {
-        mode.map_node = mode.mappings;
-        mode.pendingMap = null;
-        mode.isTrustedEvent && dispatchSKEvent("front", ['hideKeystroke']);
-        if (mode.repeats) {
-            mode.repeats = "";
-        }
-        ret = true;
+function readKeyState(mode) {
+    return { node: mode.map_node, pending: mode.pendingMap || null, repeats: mode.repeats };
+}
+
+// The dispatch state stays on the mode object while other modules still read and
+// reset map_node, pendingMap and repeats there directly.
+function writeKeyState(mode, s) {
+    mode.map_node = s.node;
+    mode.pendingMap = s.pending;
+    if (s.repeats !== undefined) {
+        mode.repeats = s.repeats;
     }
-    return ret;
+}
+
+Mode.finish = function (mode) {
+    const f = finish(readKeyState(mode), mode.mappings);
+    if (f.changed) {
+        writeKeyState(mode, f.state);
+        mode.isTrustedEvent && dispatchSKEvent("front", ['hideKeystroke']);
+    }
+    return f.changed;
 };
 
+function repeatCode(code) {
+    while (RUNTIME.repeats > 0) {
+        code();
+        RUNTIME.repeats--;
+    }
+}
+
+function runKeyEffect(mode, effect, onNoMatched) {
+    switch (effect.type) {
+        case "showKeystroke":
+            dispatchSKEvent("front", ['showKeystroke', effect.key, mode]);
+            return;
+        case "hideKeystroke":
+            dispatchSKEvent("front", ['hideKeystroke']);
+            return;
+        case "setLastKeys":
+            mode.setLastKeys && mode.setLastKeys(effect.word);
+            return;
+        case "noMatch":
+            onNoMatched && onNoMatched(effect.last);
+            return;
+        case "callPending":
+            effect.code.call(mode, effect.key);
+            return;
+        case "run":
+            // Mapping code may lower RUNTIME.repeats to stop its own repetition.
+            RUNTIME.repeats = effect.times;
+            repeatCode(effect.code);
+            return;
+        case "confirmRun":
+            RUNTIME.repeats = effect.times;
+            dispatchSKEvent("front", ['showDialog', `Do you really want to repeat this action (${effect.annotation}) ${effect.times} times?`, () => {
+                repeatCode(effect.code);
+            }]);
+            return;
+        case "finish":
+            return Mode.finish(mode);
+    }
+}
+
 Mode.handleMapKey = function(event, onNoMatched) {
-    var thisMode = this,
-        key = event.sk_keyName;
+    var key = event.sk_keyName;
     this.isTrustedEvent = this.__trust_all_events__ || event.isTrusted;
 
     var isEscKey = Mode.isSpecialKeyOf("<Esc>", key);
@@ -316,70 +335,29 @@ Mode.handleMapKey = function(event, onNoMatched) {
         key = KeyboardUtils.encodeKeystroke("<Esc>");
     }
 
-    var actionDone = false;
-    if (isEscKey && Mode.finish(this)) {
-        event.sk_stopPropagation = true;
-        event.sk_suppressed = true;
-        actionDone = true;
-    } else if (this.pendingMap) {
-        this.setLastKeys && this.setLastKeys(this.map_node.meta.word + key);
-        var pf = this.pendingMap.bind(this);
-        event.sk_stopPropagation = (!this.map_node.meta.stopPropagation
-            || this.map_node.meta.stopPropagation(key));
-        pf(key);
-        actionDone = Mode.finish(thisMode);
-    } else if (this.repeats !== undefined &&
-        this.map_node === this.mappings &&
-        runtime.conf.digitForRepeat &&
-        (key >= "1" || (this.repeats !== "" && key >= "0")) && key <= "9" &&
-        this.map_node.getWords().length > 0
-    ) {
-        // reset only after target action executed or cancelled
-        this.repeats += key;
-        this.isTrustedEvent && dispatchSKEvent("front", ['showKeystroke', key, this]);
-        event.sk_stopPropagation = true;
-    } else {
-        var last = this.map_node;
-        this.map_node = this.map_node.find(key);
-        if (!this.map_node) {
-            onNoMatched && onNoMatched(last);
-            event.sk_suppressed = (last !== this.mappings);
-            actionDone = Mode.finish(this);
-        } else {
-            if (this.map_node.meta) {
-                var code = this.map_node.meta.code;
-                if (code.length) {
-                    // bound function needs arguments
-                    this.pendingMap = code;
-                    this.isTrustedEvent && dispatchSKEvent("front", ['showKeystroke', key, this]);
-                    event.sk_stopPropagation = true;
-                } else {
-                    this.setLastKeys && this.setLastKeys(this.map_node.meta.word);
-                    RUNTIME.repeats = parseInt(this.repeats) || 1;
-                    event.sk_stopPropagation = (!this.map_node.meta.stopPropagation
-                        || this.map_node.meta.stopPropagation(key));
-                    if (!this.map_node.meta.repeatNoThrottling && RUNTIME.repeats > runtime.conf.repeatThreshold) {
-                        dispatchSKEvent("front", ['showDialog', `Do you really want to repeat this action (${this.map_node.meta.annotation}) ${RUNTIME.repeats} times?`, () => {
-                            while(RUNTIME.repeats > 0) {
-                                code();
-                                RUNTIME.repeats--;
-                            }
-                        }]);
-                    } else {
-                        while(RUNTIME.repeats > 0) {
-                            code();
-                            RUNTIME.repeats--;
-                        }
-                    }
-                    actionDone = Mode.finish(thisMode);
-                }
-            } else {
-                this.isTrustedEvent && dispatchSKEvent("front", ['showKeystroke', key, this]);
-                event.sk_stopPropagation = true;
-            }
+    const r = dispatchKey(readKeyState(this), {
+        key,
+        isEsc: isEscKey,
+        trusted: !!this.isTrustedEvent,
+        root: this.mappings,
+        digitForRepeat: !!runtime.conf.digitForRepeat,
+        repeatThreshold: runtime.conf.repeatThreshold,
+    });
+    writeKeyState(this, r.state);
+    if (r.stopPropagation !== undefined) {
+        event.sk_stopPropagation = r.stopPropagation;
+    }
+    if (r.suppressed !== undefined) {
+        event.sk_suppressed = r.suppressed;
+    }
+    let finished = false;
+    for (const effect of r.effects) {
+        const ret = runKeyEffect(this, effect, onNoMatched);
+        if (effect.type === "finish") {
+            finished = ret;
         }
     }
-    return actionDone;
+    return r.done === "finish" ? finished : r.done;
 };
 
 Mode.checkEventListener = (onMissing) => {
