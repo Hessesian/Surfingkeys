@@ -329,19 +329,38 @@ function showBanner(msg, timeout) {
  * @returns {boolean} whether the edit was applied.
  */
 function replaceEditableSelection(element, text) {
-    const collapsed = element.setSelectionRange !== undefined
-        ? element.selectionStart === element.selectionEnd
-        : document.getSelection().isCollapsed;
+    const field = element.setSelectionRange !== undefined;
+    const selection = document.getSelection();
+    const collapsed = field ? element.selectionStart === element.selectionEnd : selection.isCollapsed;
     // "delete" on a collapsed selection deletes the character before the caret.
     if (!text && collapsed) {
         return true;
     }
-    if (document.execCommand(text ? "insertText" : "delete", false, text)) {
-        return true;
+    // A rich editor may cancel the input event and apply the edit from its own model,
+    // possibly a frame later, so success is judged by the field's content afterwards.
+    const host = field ? element : (document.activeElement && document.activeElement.isContentEditable ? document.activeElement : element);
+    const content = () => field ? host.value : host.textContent;
+    const before = content();
+    const command = text ? "insertText" : "delete";
+    const detail = { command, text, selected: field ? host.value.slice(host.selectionStart, host.selectionEnd) : selection.toString(), element };
+    const reject = (reason) => {
+        console.warn(`Surfingkeys: ${command} in an editable did not apply (${reason})`, detail);
+        showBanner("This field rejected Surfingkeys' edit. Surfingkeys is off here until you leave the field.", 3000);
+        dispatchSKEvent("normal", ['disableOnFocusedElement']);
+    };
+    if (!document.execCommand(command, false, text)) {
+        reject("execCommand returned false");
+        return false;
     }
-    showBanner("This field rejected Surfingkeys' edit. Surfingkeys is off here until you leave the field.", 3000);
-    dispatchSKEvent("normal", ['disableOnFocusedElement']);
-    return false;
+    if (content() === before) {
+        setTimeout(() => {
+            // A re-rendered editor may have replaced the host; that is not a rejection.
+            if (host.isConnected && content() === before) {
+                reject("content unchanged");
+            }
+        }, 100);
+    }
+    return true;
 }
 
 /**

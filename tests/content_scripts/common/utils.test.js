@@ -278,6 +278,7 @@ describe('replaceEditableSelection', () => {
         document.body.innerHTML = '<textarea>hello world</textarea>';
         textarea = document.querySelector('textarea');
         document.execCommand = jest.fn(() => true);
+        jest.useRealTimers();
     });
 
     test('deleting a collapsed selection is a no-op, not a backspace', () => {
@@ -301,5 +302,28 @@ describe('replaceEditableSelection', () => {
         expect(replaceEditableSelection(textarea, '')).toBe(false);
         expect(textarea.value).toBe('hello world');
         expect(sent).toEqual([['front', 'showBanner'], ['normal', 'disableOnFocusedElement']]);
+    });
+
+    test('an edit the editor swallows is reported once the field is seen unchanged', () => {
+        jest.useFakeTimers();
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        textarea.setSelectionRange(0, 5);
+        expect(replaceEditableSelection(textarea, '')).toBe(true);
+        expect(sent).toEqual([]);
+        jest.advanceTimersByTime(100);
+        expect(sent).toEqual([['front', 'showBanner'], ['normal', 'disableOnFocusedElement']]);
+        expect(warn.mock.calls[0][0]).toMatch('content unchanged');
+        warn.mockRestore();
+        jest.useRealTimers();
+    });
+
+    test('an edit applied a moment later is not reported', () => {
+        jest.useFakeTimers();
+        textarea.setSelectionRange(0, 5);
+        replaceEditableSelection(textarea, '');
+        textarea.value = ' world';
+        jest.advanceTimersByTime(100);
+        expect(sent).toEqual([]);
+        jest.useRealTimers();
     });
 });
