@@ -328,6 +328,21 @@ function showBanner(msg, timeout) {
  * @param {string} text
  * @returns {boolean} whether the edit was applied.
  */
+function editorClaims(range, text, collapsed) {
+    const node = range.startContainer;
+    const target = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    const event = new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        inputType: text ? (collapsed ? "insertText" : "insertReplacementText") : "deleteContentBackward",
+        data: text || null,
+        targetRanges: [new StaticRange(range)],
+    });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+}
+
 function replaceEditableSelection(element, text) {
     const field = element.setSelectionRange !== undefined;
     const selection = document.getSelection();
@@ -348,6 +363,12 @@ function replaceEditableSelection(element, text) {
         showBanner("This field rejected Surfingkeys' edit. Surfingkeys is off here until you leave the field.", 3000);
         dispatchSKEvent("normal", ['disableOnFocusedElement']);
     };
+    // Model-driven editors (CKEditor, Lexical, Slate, ...) apply edits from beforeinput
+    // and revert DOM changes they did not make, and execCommand fires no beforeinput.
+    // So offer the edit as beforeinput first; execCommand only if no editor claims it.
+    if (!field && selection.rangeCount && editorClaims(selection.getRangeAt(0), text, collapsed)) {
+        return true;
+    }
     if (!document.execCommand(command, false, text)) {
         reject("execCommand returned false");
         return false;

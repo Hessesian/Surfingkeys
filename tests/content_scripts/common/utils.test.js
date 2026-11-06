@@ -304,6 +304,18 @@ describe('replaceEditableSelection', () => {
         expect(sent).toEqual([['front', 'showBanner'], ['normal', 'disableOnFocusedElement']]);
     });
 
+    test('a model-driven editor that claims the beforeinput gets the edit instead of execCommand', () => {
+        document.body.innerHTML = '<div contenteditable="true"><p>hello world</p></div>';
+        const editor = document.querySelector('div');
+        const seen = [];
+        editor.addEventListener('beforeinput', (e) => { seen.push(e.inputType); e.preventDefault(); });
+        const text = editor.querySelector('p').firstChild;
+        document.getSelection().setBaseAndExtent(text, 0, text, 5);
+        expect(replaceEditableSelection(editor, '')).toBe(true);
+        expect(seen).toEqual(['deleteContentBackward']);
+        expect(document.execCommand).not.toHaveBeenCalled();
+    });
+
     test('an edit the editor swallows is reported once the field is seen unchanged', () => {
         jest.useFakeTimers();
         const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
