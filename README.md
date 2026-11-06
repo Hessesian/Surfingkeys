@@ -79,7 +79,7 @@ Surfingkeys does its best to make full use of the keyboard for web browsing, but
 * Search selected with, which works in both normal mode and visual mode.
 * Help messages are automatically generated for mappings.
 * `*` to search word under cursor in visual mode.
-* Scroll actions like page up/down (`e` `d`) work not only for the top window but also for scrollable DIVs.
+* Scroll actions like page up/down (`u` `d`) work not only for the top window but also for scrollable DIVs.
 * `w` to switch frames if there are any.
 * Session management
 * A versatile bookmark/url finder
@@ -97,7 +97,7 @@ Surfingkeys does its best to make full use of the keyboard for web browsing, but
 
 After you install the extension from [Chrome Web Store](https://chrome.google.com/webstore/detail/surfingkeys/gfbliohnnapiefjpjlpjnehglfpaknnc) or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/surfingkeys_ff/), open a site you'd like to browse. Then press `?` or `u` to take a quick look at the default mappings first. Press `Esc` to hide the usage popover.
 
-Try some mappings described in the usage popover. For example, press `e` to scroll a page up, `d` to scroll a page down, `;e` to open settings page.
+Try some mappings described in the usage popover. For example, press `u` to scroll a page up, `d` to scroll a page down, `;e` to open settings page.
 
 * `?` to show help
 ![help](https://user-images.githubusercontent.com/288207/72702854-0a74a480-3b8f-11ea-9be3-69745c280c3f.png)
@@ -161,7 +161,7 @@ Hints are placed at the center of target links; you could add the line below to 
 
 #### Regional Hints mode
 
-Press `L` to enter regional Hints mode by picking a visually large element. There are some built-in actions in regional Hints mode,
+Press `gL` to enter regional Hints mode by picking a visually large element. There are some built-in actions in regional Hints mode,
 
 * `Esc` to exit regional hints mode
 * `ct` to copy text from target element
@@ -245,7 +245,7 @@ The omnibar provides various functions that need user input, for example,
 
 * Open URLs (from both bookmarks and history) with `t`
 * Open bookmarks with `b`
-* Open search engines with `og` / `ow` ...
+* Open a search engine by typing its alias and a space in the omnibar, e.g. `o`, `g`, `Space` for Google
 * Open commands with `:`
 
 ### key bindings in Omnibar
@@ -298,7 +298,7 @@ In this way, the created mark always points to the current URL. You can also cre
 
 Then afterwards `'F` will open that URL directly.
 
-This is very useful for pages you access frequently. Press `om` to check out all the vim-like marks you have created.
+This is very useful for pages you access frequently. Press `;om` to check out all the vim-like marks you have created.
 
 ## Switch tabs
 
@@ -562,9 +562,9 @@ Some functionalities are also available when you're using the original PDF viewe
 | settings.tabsThreshold | 100 | When total of opened tabs exceeds the number, Omnibar will be used for choosing tabs. |
 | settings.verticalTabs | true | Whether to show tab pickers vertically aligned. |
 | settings.clickableSelector | "" | Extra CSS selector to pick elements for hints mode, such as "\*.jfk-button, \*.goog-flat-menu-button". |
-| settings.clickablePat | /(https?&#124;thunder&#124;magnet):\/\/\S+/ig | A regex to detect clickable links from text, you could use `O` to open them. |
+| settings.clickablePat | /(https?&#124;thunder&#124;magnet):\/\/\S+/ig | A regex to detect clickable links from text, you could use `;O` to open them. |
 | settings.editableSelector | div.CodeMirror-scroll,div.ace_content | CSS selector for additional editable elements. |
-| settings.smoothScroll | true | Whether to use smooth scrolling when pressing keys like `j`/`k`/`e`/`d` to scroll page or elements. |
+| settings.smoothScroll | true | Whether to use smooth scrolling when pressing keys like `j`/`k`/`u`/`d` to scroll page or elements. |
 | settings.modeAfterYank | "" | Which mode to fall back after yanking text in visual mode. Value could be one of ["", "Caret", "Normal"], default is "", which means no action after yank.|
 | settings.scrollStepSize | 70 | A step size for each move by `j`/`k` |
 | settings.scrollFriction | 0 | A force that is needed to start continuous scrolling after initial scroll step. A bigger number will cause a flicker after initial step, but help to keep the first step precise. |
@@ -635,7 +635,7 @@ Bedrock and any OpenAI-API-compatible service (SiliconFlow, OpenRouter, DeepSeek
 are supported once you put your credentials in `settings.llm`. The chat can also read your
 tabs, history, bookmarks and other pages through browser tools, and every one of those calls
 is confirmed by you before it runs. `A` works in visual mode and from Regional Hints mode
-(`L` then `l`) to chat about just the text you picked, and `Ctrl-g` in insert mode corrects the
+(`gL` then `l`) to chat about just the text you picked, and `Ctrl-g` in insert mode corrects the
 grammar of the current input. `/agents` in the chat switches it to one of your own system
 prompts, defined in `settings.llmAgents`.
 

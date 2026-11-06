@@ -54,8 +54,8 @@ Set up credentials first:
 
 Other ways to start a chat:
 
-* **Visual mode** — `v`/`V` then `v` to select text, then `A` to chat about the selection.
-* **Regional Hints** — `L` to pick an element, then `l`.
+* **Visual mode** — `v`/`gv` then `v` to select text, then `A` to chat about the selection.
+* **Regional Hints** — `gL` to pick an element, then `l`.
 
 A conversation is kept per site and resumes when you return or reload. `/clear` starts a fresh one and revokes any tool permissions granted on that site. Switching provider mid-conversation keeps the Q&A but drops prior tool results.
 
@@ -100,7 +100,7 @@ Tools that change something (always confirmed — see below):
 | `open_url` | open a URL in a background tab |
 | `group_tabs` | group open tabs under a name |
 
-`search_web` is what the model uses instead of guessing — for a fact newer than its training, or a name it does not recognise. It searches with **your own search engines**, the ones behind your `sg`/`og` mappings: `settings.defaultSearchEngine` unless the model picks another by its alias, so nothing goes to an engine you did not configure.
+`search_web` is what the model uses instead of guessing — for a fact newer than its training, or a name it does not recognise. It searches with **your own search engines**, the ones behind your `sg` mappings and omnibar aliases: `settings.defaultSearchEngine` unless the model picks another by its alias, so nothing goes to an engine you did not configure.
 
     settings.defaultSearchEngine = "d";
     addSearchAlias('k', 'kagi', 'https://kagi.com/search?q=');

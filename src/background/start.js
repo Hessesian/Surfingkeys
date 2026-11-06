@@ -1124,8 +1124,9 @@ function start(browser) {
     self.focusTabByIndex = function(message, sender, sendResponse) {
         var queryInfo = message.queryInfo || {currentWindow: true};
         chrome.tabs.query(queryInfo, function(tabs) {
-            if (message.repeats > 0 && message.repeats <= tabs.length) {
-                chrome.tabs.update(tabs[message.repeats - 1].id, {
+            const position = message.last ? tabs.length : message.repeats;
+            if (position > 0 && position <= tabs.length) {
+                chrome.tabs.update(tabs[position - 1].id, {
                     active: true
                 });
             }

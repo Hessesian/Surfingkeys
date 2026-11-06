@@ -245,6 +245,21 @@ function createVisual(clipboard, hints) {
         s: "sentence",
         p: "paragraphboundary"
     };
+    // Whole unit around the cursor, like vim's text objects: to its end and back to its
+    // start, then across it.
+    function _selectInner(w) {
+        if (getBrowserName() === "Firefox" && (w === "p" || w === "s")) {
+            return;
+        }
+        var unit = _units[w];
+        self.hideCursor();
+        state = 2;
+        _onStateChange();
+        selection.modify("move", "forward", unit);
+        selection.modify("move", "backward", unit);
+        selection.modify("extend", "forward", unit);
+        self.showCursor();
+    }
     function _selectUnit(w) {
         if (getBrowserName() !== "Firefox" || (w !== "p" && w !== "s")) {
             var unit = _units[w];
@@ -400,14 +415,31 @@ function createVisual(clipboard, hints) {
     });
 
     self.mappings.add("V", {
-        annotation: "Select a word(w) or line(l) or sentence(s) or paragraph(p)",
+        annotation: "Select the line under the cursor",
         feature_group: 9,
-        code: function(w) {
-            self.hideCursor();
-            state = 2;
-            _onStateChange();
-            _selectUnit(w);
-            self.showCursor();
+        code: function() {
+            _selectInner("l");
+        }
+    });
+    self.mappings.add("iw", {
+        annotation: "Select the word under the cursor",
+        feature_group: 9,
+        code: function() {
+            _selectInner("w");
+        }
+    });
+    self.mappings.add("is", {
+        annotation: "Select the sentence under the cursor",
+        feature_group: 9,
+        code: function() {
+            _selectInner("s");
+        }
+    });
+    self.mappings.add("ip", {
+        annotation: "Select the paragraph under the cursor",
+        feature_group: 9,
+        code: function() {
+            _selectInner("p");
         }
     });
 
@@ -641,6 +673,8 @@ function createVisual(clipboard, hints) {
                                 selection.extend(element[0], element[1] + element[2].length);
                             }
                             _incState();
+                        } else if (ex === "V") {
+                            _selectInner("l");
                         }
                         self.showCursor();
                     }, 0);

@@ -125,7 +125,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
             front.showEditor(element);
         });
     });
-    mapkey('L', '#1Enter regional Hints mode', function() {
+    mapkey('gL', '#1Enter regional Hints mode', function() {
         hints.create(getLargeElements(), (e) => { }, { regionalHints: true });
     });
 
@@ -243,8 +243,11 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
         });
     });
 
-    mapkey('V', '#9Restore visual mode', function() {
+    mapkey('gv', '#9Restore visual mode', function() {
         visual.restore();
+    });
+    mapkey('V', '#9Enter visual mode, and select a line', function() {
+        visual.toggle("V");
     });
     mapkey('*', '#9Find selected text in current page', function() {
         visual.star();
@@ -341,7 +344,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
     mapkey(';t', '#8Translate selected text with LLM', translateSelection);
     vmapkey('t', '#8Translate selected text with LLM', translateSelection);
 
-    mapkey('O', '#1Open detected links from text', function() {
+    mapkey(';O', '#1Open detected links from text', function() {
         hints.create(runtime.conf.clickablePat, function(element) {
             window.location.assign(element[2]);
         }, {statusLine: "Open detected links from text"});
@@ -467,7 +470,8 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
             name: 'LAST'
         });
     });
-    map('u', 'e');
+    map('<Ctrl-u>', 'u');
+    map('<Ctrl-d>', 'd');
     mapkey('af', '#1Open a link in active new tab', function() {
         hints.create("", hints.dispatchMouseClick, {tabbed: true, active: true});
     });
@@ -477,7 +481,6 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
     mapkey('cf', '#1Open multiple links in a new tab', function() {
         hints.create("", hints.dispatchMouseClick, {multipleHits: true});
     });
-    map('C', 'gf');
     /*
      * Split view is new and not in every build, so whether `sf` is a mapping at all is
      * answered by the background -- the only side that can see chrome.tabs -- and that
@@ -557,10 +560,9 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
         });
     });
 
-    map('<Ctrl-i>', 'I');
     cmap('<ArrowDown>', '<Ctrl-n>');
     cmap('<ArrowUp>', '<Ctrl-p>');
-    mapkey('q', '#1Click on an Image or a button', function() {
+    mapkey('gq', '#1Click on an Image or a button', function() {
         hints.create("img, button", hints.dispatchMouseClick);
     });
     mapkey('<Alt-p>', '#3pin/unpin current tab', function() {
@@ -569,21 +571,29 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
     mapkey('<Alt-m>', '#3mute/unmute current tab', function() {
         RUNTIME("muteTab");
     });
-    mapkey('B', '#4Go one tab history back', function() {
+    mapkey('g;', '#4Go one tab history back', function() {
         RUNTIME("historyTab", {backward: true});
     }, {repeatIgnore: true});
-    mapkey('C', '#4Go one tab history forward', function() {
+    mapkey('g,', '#4Go one tab history forward', function() {
         RUNTIME("historyTab", {backward: false});
     }, {repeatIgnore: true});
     mapkey('<Ctrl-6>', '#4Go to last used tab', function() {
         RUNTIME("goToLastTab");
     });
-    mapkey('gT', '#4Go to first activated tab', function() {
+    mapkey('g[', '#4Go to first activated tab', function() {
         RUNTIME("historyTab", {index: 0});
     }, {repeatIgnore: true});
-    mapkey('gt', '#4Go to last activated tab', function() {
+    mapkey('g]', '#4Go to last activated tab', function() {
         RUNTIME("historyTab", {index: -1});
     }, {repeatIgnore: true});
+    map('gt', 'R');
+    map('gT', 'E');
+    mapkey('g0', '#3Go to the leftmost tab, or the Nth with a count', function() {
+        RUNTIME("focusTabByIndex");
+    });
+    mapkey('g$', '#3Go to the rightmost tab', function() {
+        RUNTIME("focusTabByIndex", {last: true});
+    });
     mapkey('gp', '#4Go to the playing tab', function() {
         RUNTIME('getTabs', { queryInfo: {audible: true}}, response => {
             if (response.tabs?.at(0)) {
@@ -595,25 +605,27 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
             }
         })
     }, { repeatIgnore: true });
-    mapkey('S', '#4Go back in history', function() {
+    mapkey('H', '#4Go back in history', function() {
         history.go(-1);
     }, {repeatIgnore: true});
-    mapkey('D', '#4Go forward in history', function() {
+    mapkey('L', '#4Go forward in history', function() {
         history.go(1);
     }, {repeatIgnore: true});
+    map('<Ctrl-o>', 'H');
+    map('<Ctrl-i>', 'L');
     mapkey('r', '#4Reload the page', function() {
         RUNTIME("reloadTab", { nocache: false });
     });
-    mapkey('oi', '#8Open incognito window', function() {
+    mapkey(';oi', '#8Open incognito window', function() {
         RUNTIME('openIncognito', {
             url: window.location.href
         });
     });
 
-    mapkey('H', '#8Open opened URL in current tab', function() {
+    mapkey(';oH', '#8Open opened URL in current tab', function() {
         front.openOmnibar({type: "TabURLs"});
     });
-    mapkey('om', '#8Open URL from vim-like marks', function() {
+    mapkey(';om', '#8Open URL from vim-like marks', function() {
         front.openOmnibar({type: "VIMarks"});
     });
     mapkey(':', '#8Open commands', function() {
@@ -887,7 +899,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
 
     const bn = getBrowserName();
     if (bn === "Firefox") {
-        mapkey('on', '#3Open newtab', function() {
+        mapkey(';on', '#3Open newtab', function() {
             tabOpenLink("about:blank");
         });
         mapkey(';cl', '#3Open a link in a container', function() {
@@ -936,7 +948,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
             readText(window.getSelection().toString(), {verbose: true});
         });
 
-        mapkey('on', '#3Open newtab', function() {
+        mapkey(';on', '#3Open newtab', function() {
             tabOpenLink("chrome://newtab/");
         });
         mapkey('ga', '#12Open Chrome About', function() {
@@ -979,7 +991,9 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
         mapkey('go', '#8Open a URL in current tab', function() {
             front.openOmnibar({type: "URLs", tabbed: false});
         });
-        mapkey('ox', '#8Open recently closed URL', function() {
+        map('o', 'go');
+        map('O', 't');
+        mapkey(';ox', '#8Open recently closed URL', function() {
             front.openOmnibar({type: "RecentlyClosed"});
         });
         mapkey('b', '#8Open a bookmark', function() {
@@ -995,7 +1009,7 @@ export default function(api, clipboard, insert, normal, hints, visual, front, br
             };
             front.openOmnibar(({type: "AddBookmark", extra: page}));
         });
-        mapkey('oh', '#8Open URL from history', function() {
+        mapkey(';oh', '#8Open URL from history', function() {
             front.openOmnibar({type: "History"});
         });
         mapkey('W', '#3Move current tab to another window',  function() {

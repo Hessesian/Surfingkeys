@@ -331,10 +331,8 @@ function createAPI(clipboard, insert, normal, hints, visual, front, browser) {
         function ssw() {
             searchSelectedWith(search_url);
         }
+        // No `o` + alias key: `o` opens the URL omnibar, where the alias and a space pick the engine.
         mapkey((search_leader_key || 's') + alias, ['#6Search selected with {0}', prompt], ssw);
-        mapkey('o' + alias, ['#8Open Omnibar for {0} Search', prompt], () => {
-            front.openOmnibar({type: "SearchEngine", extra: alias});
-        });
         vmapkey((search_leader_key || 's') + alias, '', ssw);
         function ssw2() {
             searchSelectedWith(search_url, true);

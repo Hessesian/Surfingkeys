@@ -352,7 +352,7 @@ export default function(
     }
     document.getElementById('save_button').onclick = saveSettings;
 
-    var basicMappings = ['d', 'R', 'f', 'E', 'e', 'x', 'gg', 'j', '/', 'n', 'r', 'k', 'S', 'C', 'on', 'G', 'v', 'i', ';e', 'og', 'g0', 't', '<Ctrl-6>', 'yy', 'g$', 'D', 'ob', 'X', 'sg', 'cf', 'yv', 'yt', 'N', 'l', 'cc', '$', 'yf', 'w', '0', 'yg', 'ow', 'cs', 'b', 'om', 'ya', 'h', 'gU', 'W', 'B', 'F', ';j'];
+    var basicMappings = ['d', 'gt', 'f', 'gT', 'u', 'x', 'gg', 'j', '/', 'n', 'r', 'k', 'H', 'g,', ';on', 'G', 'v', 'i', ';e', 'o', 'g0', 'O', '<Ctrl-6>', 'yy', 'g$', 'L', 'gv', 'X', 'sg', 'cf', 'yv', 'yt', 'N', 'l', 'cc', '$', 'yf', 'w', '0', 'yg', 'V', 'cs', 'b', ';om', 'ya', 'h', 'gU', 'W', 'g;', 'F', ';j'];
 
 
     document.addEventListener("surfingkeys:defaultSettingsLoaded", function(evt) {

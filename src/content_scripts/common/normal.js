@@ -901,7 +901,7 @@ function createNormal(insert) {
         return bound && bound.meta && bound.meta.code && bound.meta.code.isSKScrollInHints;
     };
 
-    self.mappings.add("e", {
+    self.mappings.add("u", {
         annotation: "Scroll half page up",
         feature_group: 2,
         repeatIgnore: true,
