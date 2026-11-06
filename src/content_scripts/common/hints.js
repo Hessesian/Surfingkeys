@@ -3,6 +3,7 @@ import Mode from './mode';
 import KeyboardUtils from './keyboardUtils';
 import Trie from './trie';
 import toMarkdown from './pageMarkdown.js';
+import { startElementIndexWhenIdle, visibleCandidates, visibleTextElements } from './elementIndex';
 import {
     createElementWithContent,
     dispatchMouseEvent,
@@ -184,6 +185,7 @@ kbd {
 
 function createHints(insert, normal, clipboard) {
     const self = new Mode("Hints");
+    startElementIndexWhenIdle(getStructuralClickableSelector);
     const hintsHost = document.createElement("div");
     hintsHost.className = "surfingkeys_hints_host";
     hintsHost.attachShadow({ mode: 'open' });
@@ -819,7 +821,9 @@ div.hint-scrollable {
         }
         let elements;
         if (cssSelector === "") {
-            elements = getVisibleElementsBySelector(getStructuralClickableSelector());
+            const selector = getStructuralClickableSelector();
+            elements = visibleCandidates(selector, {width: window.innerWidth, height: window.innerHeight})
+                || getVisibleElementsBySelector(selector);
             // Fall back to the expensive full-DOM cursor heuristic when the
             // fast pass found nothing (page built entirely from non-semantic
             // markup), when the user has explicitly asked for it every time
@@ -859,7 +863,7 @@ div.hint-scrollable {
         }
         self.statusLine = (attrs && attrs.statusLine) || "Hints to select text";
 
-        var elements = getVisibleElements(function(e, v) {
+        var elements = visibleTextElements({width: window.innerWidth, height: window.innerHeight}) || getVisibleElements(function(e, v) {
             var aa = e.childNodes;
             for (var i = 0, len = aa.length; i < len; i++) {
                 if (aa[i].nodeType == Node.TEXT_NODE && aa[i].data.length > 0) {
